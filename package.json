@@ -1,0 +1,41 @@
+{
+  "name": "monokle-action",
+  "version": "0.0.0",
+  "author": "Kubeshop",
+  "license": "MIT",
+  "keywords": [
+    "monokle",
+    "kubernetes",
+    "validation",
+    "security",
+    "github-actions",
+    "devsecops",
+    "SARIF",
+    "scanning",
+    "scanner"
+  ],
+  "description": "GitHub Action for Monokle's SARIF validator.",
+  "main": "lib/main.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kubeshop/monokle-action.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kubeshop/monokle-action/issues"
+  },
+  "homepage": "https://github.com/kubeshop/monokle-action#readme",
+  "dependencies": {
+    "@actions/core": "1.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "18.8.1",
+    "@vercel/ncc": "0.34.0",
+    "typescript": "4.8.4",
+    "vitest": "0.23.4"
+  }
+}

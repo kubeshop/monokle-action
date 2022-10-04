@@ -1,0 +1,10 @@
+name: "Monokle Validation"
+description: "Validate your Kubernetes resources."
+runs:
+  using: "node16"
+  main: "dist/index.js"
+inputs:
+  milliseconds:
+    required: true
+    description: "input description here"
+    default: "default value if applicable"
