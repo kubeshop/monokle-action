@@ -1,6 +1,6 @@
 {
   "name": "monokle-action",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "author": "Kubeshop",
   "license": "MIT",
   "keywords": [
@@ -19,7 +19,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && vitest run"
+    "test": "npm run build && vitest run",
+    "package": "ncc build --source-map --license licenses.txt"
   },
   "repository": {
     "type": "git",
