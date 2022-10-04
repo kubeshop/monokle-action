@@ -4,17 +4,19 @@ import * as path from "path";
 import { test } from "vitest";
 
 test("it should run the GitHub action", () => {
-  const output = runAction({
-    INPUT_MILLISECONDS: "500",
-  });
+  try {
+    const output = runAction();
 
-  console.log(output);
+    console.log(output);
+  } catch (err) {
+    console.error(String(err.stdout));
+  }
 });
 
 /**
  * Execute the JavaScript action with given environment variables.
  */
-export function runAction(env: Record<string, string>) {
+export function runAction(env: Record<string, string> = {}) {
   Object.entries(env).forEach(([key, value]) => {
     process.env[key] = value;
   });
