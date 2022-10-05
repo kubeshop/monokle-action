@@ -1,17 +1,20 @@
 import * as core from "@actions/core";
-import * as fs from "fs";
+import * as fs from "fs/promises";
+import * as fse from "fs-extra";
+import * as path from "path";
 import { configureValidator, createValidator } from "./validator.js";
 
 import "isomorphic-fetch";
 import { extractK8sResources, File } from "./parse.js";
 import { printResponse } from "./io.js";
+import { Resource, ValidationResponse } from "@monokle/validation";
 
 async function run(): Promise<void> {
   try {
     const validator = createValidator();
     await configureValidator(validator);
 
-    const resources = getResources();
+    const resources = await getResources();
 
     if (resources.length === 0) {
       core.warning("No resources found");
@@ -27,6 +30,8 @@ async function run(): Promise<void> {
 
     printResponse(response);
 
+    await outputSarifResponse(response);
+
     if (errorCount > 0) {
       core.setFailed(`${errorCount} problems detected`);
     } else {
@@ -37,20 +42,36 @@ async function run(): Promise<void> {
   }
 }
 
-function getResources() {
-  const bundle = getBundle();
+async function getResources(): Promise<Resource[]> {
+  const bundle = await getBundle();
   return extractK8sResources([bundle]);
 }
 
-function getBundle(): File {
-  const path = core.getInput("path");
-  const content = fs.readFileSync(path).toString();
+async function getBundle(): Promise<File> {
+  const inputPath = core.getInput("path");
+  const data = await fs.readFile(inputPath);
+  const content = data.toString();
 
   return {
     id: "bundle",
     content,
-    path,
+    path: inputPath,
   };
+}
+
+async function outputSarifResponse(
+  response: ValidationResponse
+): Promise<void> {
+  const tempDirectory = process.env["RUNNER_TEMP"];
+
+  if (!tempDirectory) {
+    throw new Error("runner_temp_not_found");
+  }
+
+  const outputPath = path.join(tempDirectory, `monokle-${Date.now()}.sarif`);
+  await fse.outputFile(outputPath, JSON.stringify(response));
+
+  core.setOutput("sarif", outputPath);
 }
 
 run();

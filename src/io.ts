@@ -1,8 +1,4 @@
-import {
-  getFileLocation,
-  getRuleForResult,
-  ValidationResponse,
-} from "@monokle/validation";
+import { getRuleForResult, ValidationResponse } from "@monokle/validation";
 import * as core from "@actions/core";
 import styles from "ansi-styles";
 
