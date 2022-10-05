@@ -30115,8 +30115,6 @@ var core = __nccwpck_require__(2186);
 const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs/promises");
 // EXTERNAL MODULE: ./node_modules/fs-extra/lib/index.js
 var lib = __nccwpck_require__(5630);
-// EXTERNAL MODULE: external "path"
-var external_path_ = __nccwpck_require__(1017);
 // EXTERNAL MODULE: ./node_modules/yaml/dist/index.js
 var dist = __nccwpck_require__(4083);
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/references/utils/getResourceNodes.js
@@ -30343,7 +30341,7 @@ function getResourceLocation(result) {
 }
 function getFileLocation(result) {
     const location = result.locations?.[0];
-    invariant(location, "invalid SARIF result");
+    tiny_invariant_cjs(location, "invalid SARIF result");
     return location;
 }
 
@@ -31599,6 +31597,8 @@ function configureValidator(validator) {
 
 // EXTERNAL MODULE: ./node_modules/isomorphic-fetch/fetch-npm-node.js
 var fetch_npm_node = __nccwpck_require__(2340);
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(1017);
 // EXTERNAL MODULE: ./node_modules/uuid/dist/index.js
 var uuid_dist = __nccwpck_require__(5840);
 ;// CONCATENATED MODULE: ./node_modules/uuid/wrapper.mjs
@@ -31969,26 +31969,27 @@ const ansiStyles = assembleStyles();
 
 function printResponse(response) {
     for (const run of response.runs) {
-        core.info(`${ansi_styles.color.blue}Run ${run.tool.driver.name}`);
         if (run.results.length === 0) {
+            core.startGroup(`${ansi_styles.color.green.open}Run ${run.tool.driver.name}${ansi_styles.color.green.close}`);
             core.info("No problems detected");
-            core.info("");
+            core.endGroup();
             continue;
         }
+        core.startGroup(`${ansi_styles.color.red.open}Run ${run.tool.driver.name} (${run.results.length} problems)${ansi_styles.color.red.close}`);
         for (const result of run.results) {
             const rule = getRuleForResult(response, result);
-            core.startGroup(run.tool.driver.name);
-            core.error(`[${result.ruleId}] ${result.message.text}`);
-            core.error(`  found at ${result.locations[0].physicalLocation?.artifactLocation.uri}`);
-            core.error(`    ${rule.fullDescription} ${rule.help}`);
-            core.endGroup();
+            const location = getFileLocation(result);
+            const L1 = `[${result.ruleId}] ${result.message.text}`;
+            const L2 = `\n  found at ${location.physicalLocation?.artifactLocation.uri}:${location.physicalLocation?.region?.startColumn}`;
+            const L3 = `\n    ${rule.fullDescription.text}`;
+            const L4 = `\n      ${rule.help.text}`;
+            core.error(`${L1}${L2}${L3}${L4}`);
         }
-        core.info("");
+        core.endGroup();
     }
 }
 
 ;// CONCATENATED MODULE: ./lib/main.js
-
 
 
 
@@ -32036,11 +32037,7 @@ async function getBundle() {
     };
 }
 async function outputSarifResponse(response) {
-    const tempDirectory = process.env["RUNNER_TEMP"];
-    if (!tempDirectory) {
-        throw new Error("runner_temp_not_found");
-    }
-    const outputPath = external_path_.join(tempDirectory, `monokle-${Date.now()}.sarif`);
+    const outputPath = `monokle-${Date.now()}.sarif`;
     await lib.outputFile(outputPath, JSON.stringify(response));
     core.setOutput("sarif", outputPath);
 }

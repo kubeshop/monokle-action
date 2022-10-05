@@ -62,15 +62,8 @@ async function getBundle(): Promise<File> {
 async function outputSarifResponse(
   response: ValidationResponse
 ): Promise<void> {
-  const tempDirectory = process.env["RUNNER_TEMP"];
-
-  if (!tempDirectory) {
-    throw new Error("runner_temp_not_found");
-  }
-
-  const outputPath = path.join(tempDirectory, `monokle-${Date.now()}.sarif`);
+  const outputPath = `monokle-${Date.now()}.sarif`;
   await fse.outputFile(outputPath, JSON.stringify(response));
-
   core.setOutput("sarif", outputPath);
 }
 

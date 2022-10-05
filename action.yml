@@ -10,4 +10,4 @@ inputs:
     required: true
 outputs:
   sarif:
-    description: "Path to a SARIF file which contains the validation response."
+    description: "Relative path to a SARIF file which contains the validation response."
