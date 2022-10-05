@@ -1,16 +1,33 @@
-import { ValidationResponse } from "@monokle/validation";
+import {
+  getFileLocation,
+  getRuleForResult,
+  ValidationResponse,
+} from "@monokle/validation";
 import * as core from "@actions/core";
+import styles from "ansi-styles";
 
 export function printResponse(response: ValidationResponse) {
   for (const run of response.runs) {
-    if (run.results.length === 0) continue;
+    core.info(`${styles.color.blue}Run ${run.tool.driver.name}`);
 
-    core.startGroup(run.tool.driver.name);
-
-    for (const result of run.results) {
-      core.info(`[${result.ruleId}] ${result.message.text}`);
+    if (run.results.length === 0) {
+      core.info("No problems detected");
+      core.info("");
+      continue;
     }
 
-    core.endGroup();
+    for (const result of run.results) {
+      const rule = getRuleForResult(response, result);
+
+      core.startGroup(run.tool.driver.name);
+      core.error(`[${result.ruleId}] ${result.message.text}`);
+      core.error(
+        `  found at ${result.locations[0].physicalLocation?.artifactLocation.uri}`
+      );
+      core.error(`    ${rule.fullDescription} ${rule.help}`);
+      core.endGroup();
+    }
+
+    core.info("");
   }
 }

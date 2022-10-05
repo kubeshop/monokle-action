@@ -35,6 +35,7 @@
   "dependencies": {
     "@actions/core": "1.10.0",
     "@monokle/validation": "0.3.2",
+    "ansi-styles": "6.1.1",
     "isomorphic-fetch": "3.0.0",
     "uuid": "9.0.0"
   },
