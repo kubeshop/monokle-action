@@ -4,7 +4,7 @@ runs:
   using: "node16"
   main: "dist/index.js"
 inputs:
-  milliseconds:
+  path:
+    description: "File path to a Kubernetes resources bundle."
+    default: "bundle.yaml"
     required: true
-    description: "input description here"
-    default: "default value if applicable"

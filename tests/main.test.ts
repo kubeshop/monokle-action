@@ -5,7 +5,9 @@ import { test } from "vitest";
 
 test("it should run the GitHub action", () => {
   try {
-    const output = runAction();
+    const output = runAction({
+      INPUT_PATH: "./tests/assets/multiple-bad-resources.yaml",
+    });
 
     console.log(output);
   } catch (err) {
