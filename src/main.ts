@@ -30,23 +30,42 @@ async function run(): Promise<void> {
 
     const response = await validator.validate({ resources });
 
-    const errorCount = response.runs.reduce(
-      (sum, r) => sum + r.results.length,
-      0
-    );
+    const { problemCount, warningCount, errorCount } = countProblems(response);
+
+    if (errorCount > 0) {
+      core.setFailed(
+        `${problemCount} problems detected (${errorCount} errors)`
+      );
+    } else {
+      if (problemCount > 0) {
+        core.warning(`${warningCount} warnings detected`);
+      } else {
+        core.notice("No problems detected");
+      }
+    }
 
     printResponse(response);
 
     await outputSarifResponse(response);
-
-    if (errorCount > 0) {
-      core.setFailed(`${errorCount} problems detected`);
-    } else {
-      core.notice("No problems detected");
-    }
   } catch (error) {
     if (error instanceof Error) core.setFailed(`[unexpected] ${error.message}`);
   }
+}
+
+export function countProblems(response: ValidationResponse) {
+  const warningCount = response.runs.reduce(
+    (sum, run) =>
+      sum + run.results.reduce((s, r) => s + (r.level === "error" ? 0 : 1), 0),
+    0
+  );
+  const errorCount = response.runs.reduce(
+    (sum, run) =>
+      sum + run.results.reduce((s, r) => s + (r.level === "error" ? 1 : 0), 0),
+    0
+  );
+  const problemCount = warningCount + errorCount;
+
+  return { problemCount, errorCount, warningCount };
 }
 
 async function outputSarifResponse(

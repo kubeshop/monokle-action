@@ -30,7 +30,11 @@ export function printResponse(response: ValidationResponse) {
       const L3 = `\n    ${rule.fullDescription.text}`;
       const L4 = `\n      ${rule.help.text}`;
 
-      core.error(`${L1}${L2}${L3}${L4}`);
+      if (result.level === "error") {
+        core.error(`${L1}${L2}${L3}${L4}`);
+      } else {
+        core.warning(`${L1}${L2}${L3}${L4}`);
+      }
     }
 
     core.endGroup();
