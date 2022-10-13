@@ -39490,6 +39490,23 @@ module.exports = JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45,46],"valid"]
 /******/ }
 /******/ 
 /************************************************************************/
+/******/ /* webpack/runtime/define property getters */
+/******/ (() => {
+/******/ 	// define getter functions for harmony exports
+/******/ 	__nccwpck_require__.d = (exports, definition) => {
+/******/ 		for(var key in definition) {
+/******/ 			if(__nccwpck_require__.o(definition, key) && !__nccwpck_require__.o(exports, key)) {
+/******/ 				Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
+/******/ 			}
+/******/ 		}
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/hasOwnProperty shorthand */
+/******/ (() => {
+/******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
+/******/ })();
+/******/ 
 /******/ /* webpack/runtime/node module decorator */
 /******/ (() => {
 /******/ 	__nccwpck_require__.nmd = (module) => {
@@ -39507,6 +39524,11 @@ module.exports = JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45,46],"valid"]
 var __webpack_exports__ = {};
 // This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
 (() => {
+
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  "c": () => (/* binding */ countProblems)
+});
 
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __nccwpck_require__(2186);
@@ -45366,7 +45388,12 @@ function printResponse(response) {
             const L2 = `\n  found at ${location.physicalLocation?.artifactLocation.uri}:${location.physicalLocation?.region?.startColumn}`;
             const L3 = `\n    ${rule.fullDescription.text}`;
             const L4 = `\n      ${rule.help.text}`;
-            core.error(`${L1}${L2}${L3}${L4}`);
+            if (result.level === "error") {
+                core.error(`${L1}${L2}${L3}${L4}`);
+            }
+            else {
+                core.warning(`${L1}${L2}${L3}${L4}`);
+            }
         }
         core.endGroup();
     }
@@ -45560,20 +45587,31 @@ async function run() {
             return;
         }
         const response = await validator.validate({ resources });
-        const errorCount = response.runs.reduce((sum, r) => sum + r.results.length, 0);
-        printResponse(response);
-        await outputSarifResponse(response);
+        const { problemCount, warningCount, errorCount } = countProblems(response);
         if (errorCount > 0) {
-            core.setFailed(`${errorCount} problems detected`);
+            core.setFailed(`${problemCount} problems detected (${errorCount} errors)`);
         }
         else {
-            core.notice("No problems detected");
+            if (problemCount > 0) {
+                core.warning(`${warningCount} warnings detected`);
+            }
+            else {
+                core.notice("No problems detected");
+            }
         }
+        printResponse(response);
+        await outputSarifResponse(response);
     }
     catch (error) {
         if (error instanceof Error)
             core.setFailed(`[unexpected] ${error.message}`);
     }
+}
+function countProblems(response) {
+    const warningCount = response.runs.reduce((sum, run) => sum + run.results.reduce((s, r) => s + (r.level === "error" ? 0 : 1), 0), 0);
+    const errorCount = response.runs.reduce((sum, run) => sum + run.results.reduce((s, r) => s + (r.level === "error" ? 1 : 0), 0), 0);
+    const problemCount = warningCount + errorCount;
+    return { problemCount, errorCount, warningCount };
 }
 async function outputSarifResponse(response) {
     const outputPath = `monokle-${Date.now()}.sarif`;
@@ -45584,5 +45622,7 @@ run();
 
 })();
 
+var __webpack_exports__countProblems = __webpack_exports__.c;
+export { __webpack_exports__countProblems as countProblems };
 
 //# sourceMappingURL=index.js.map
