@@ -14,13 +14,13 @@ npm run test
 
 ## Deployment
 
-1. Package the code in a bundle
+1. Update the version in package.json.
+
+2. Package the code in a bundle
 
 ```
-npm run package
+npm run build && npm run package
 ```
-
-2. Update the version in package.json.
 
 3. Commit, tag and push the bundle within the repository
 

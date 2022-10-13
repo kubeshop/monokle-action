@@ -2383,6 +2383,639 @@ exports.checkBypass = checkBypass;
 
 /***/ }),
 
+/***/ 1671:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const json = __nccwpck_require__(102);
+const strings = __nccwpck_require__(6967);
+const regex = __nccwpck_require__(3745);
+const yaml = __nccwpck_require__(3370);
+
+module.exports = {
+  ...json,
+  ...strings,
+  ...regex,
+  ...yaml,
+};
+
+
+/***/ }),
+
+/***/ 102:
+/***/ ((module) => {
+
+function isValidJSON(str) {
+  if (typeof str !== "string") {
+    return;
+  }
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+module.exports = {
+  "json.is_valid": isValidJSON,
+};
+
+
+/***/ }),
+
+/***/ 3745:
+/***/ ((module) => {
+
+const regexSplit = (pattern, s) => s.split(RegExp(pattern));
+
+module.exports = { "regex.split": regexSplit };
+
+
+/***/ }),
+
+/***/ 6967:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const vsprintf = (__nccwpck_require__(3988)/* .vsprintf */ .q);
+
+const sprintf = (s, values) => vsprintf(s, values);
+
+module.exports = { sprintf };
+
+
+/***/ }),
+
+/***/ 3370:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const yaml = __nccwpck_require__(5296);
+
+// see: https://eemeli.org/yaml/v1/#errors
+const errors = new Set([
+  "YAMLReferenceError",
+  "YAMLSemanticError",
+  "YAMLSyntaxError",
+  "YAMLWarning",
+]);
+
+function parse(str) {
+  if (typeof str !== "string") {
+    return { ok: false, result: undefined };
+  }
+
+  const YAML_SILENCE_WARNINGS_CACHED = global.YAML_SILENCE_WARNINGS;
+  try {
+    // see: https://eemeli.org/yaml/v1/#silencing-warnings
+    global.YAML_SILENCE_WARNINGS = true;
+    return { ok: true, result: yaml.parse(str) };
+  } catch (err) {
+    // Ignore parser errors.
+    if (err && errors.has(err.name)) {
+      return { ok: false, result: undefined };
+    }
+    throw err;
+  } finally {
+    global.YAML_SILENCE_WARNINGS = YAML_SILENCE_WARNINGS_CACHED;
+  }
+}
+
+module.exports = {
+  // is_valid is expected to return nothing if input is invalid otherwise
+  // true/false for it being valid YAML.
+  "yaml.is_valid": (str) => typeof str === "string" ? parse(str).ok : undefined,
+  "yaml.marshal": (data) => yaml.stringify(data),
+  "yaml.unmarshal": (str) => parse(str).result,
+};
+
+
+/***/ }),
+
+/***/ 1535:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+// Copyright 2018 The OPA Authors.  All rights reserved.
+// Use of this source code is governed by an Apache2
+// license that can be found in the LICENSE file.
+const builtIns = __nccwpck_require__(1671);
+
+/**
+ * @param {WebAssembly.Memory} mem
+ */
+function stringDecoder(mem) {
+  return function (addr) {
+    const i8 = new Int8Array(mem.buffer);
+    let s = "";
+    while (i8[addr] !== 0) {
+      s += String.fromCharCode(i8[addr++]);
+    }
+    return s;
+  };
+}
+
+/**
+ * Stringifies and loads an object into OPA's Memory
+ * @param {WebAssembly.Instance} wasmInstance
+ * @param {WebAssembly.Memory} memory
+ * @param {any | ArrayBuffer} value data as `object`, literal primitive or ArrayBuffer (last is assumed to be a well-formed stringified JSON)
+ * @returns {number}
+ */
+function _loadJSON(wasmInstance, memory, value) {
+  if (value === undefined) {
+    return 0;
+  }
+
+  let valueBuf;
+  if (value instanceof ArrayBuffer) {
+    valueBuf = new Uint8Array(value);
+  } else {
+    const valueAsText = JSON.stringify(value);
+    valueBuf = new TextEncoder().encode(valueAsText);
+  }
+
+  const valueBufLen = valueBuf.byteLength;
+  const rawAddr = wasmInstance.exports.opa_malloc(valueBufLen);
+  const memoryBuffer = new Uint8Array(memory.buffer);
+  memoryBuffer.set(valueBuf, rawAddr);
+
+  const parsedAddr = wasmInstance.exports.opa_json_parse(rawAddr, valueBufLen);
+
+  if (parsedAddr === 0) {
+    throw "failed to parse json value";
+  }
+  return parsedAddr;
+}
+
+/**
+ * Dumps and parses a JSON object from OPA's Memory
+ * @param {WebAssembly.Instance} wasmInstance
+ * @param {WebAssembly.Memory} memory
+ * @param {number} addr
+ * @returns {object}
+ */
+function _dumpJSON(wasmInstance, memory, addr) {
+  const rawAddr = wasmInstance.exports.opa_json_dump(addr);
+  return _dumpJSONRaw(memory, rawAddr);
+}
+
+/**
+ * Parses a JSON object from wasm instance's memory
+ * @param {WebAssembly.Memory} memory
+ * @param {number} addr
+ * @returns {object}
+ */
+function _dumpJSONRaw(memory, addr) {
+  const buf = new Uint8Array(memory.buffer);
+
+  let idx = addr;
+
+  while (buf[idx] !== 0) {
+    idx++;
+  }
+
+  const utf8View = new Uint8Array(memory.buffer, addr, idx - addr);
+  const jsonAsText = new TextDecoder().decode(utf8View);
+
+  return JSON.parse(jsonAsText);
+}
+
+const builtinFuncs = builtIns;
+
+/**
+ * _builtinCall dispatches the built-in function. The built-in function
+ * arguments are loaded from Wasm and back in using JSON serialization.
+ * @param {WebAssembly.Instance} wasmInstance
+ * @param {WebAssembly.Memory} memory
+ * @param {{ [builtinId: number]: string }} builtins
+ * @param {{ [builtinName: string]: Function }} customBuiltins
+ * @param {string} builtin_id
+ */
+function _builtinCall(
+  wasmInstance,
+  memory,
+  builtins,
+  customBuiltins,
+  builtinId,
+) {
+  const builtInName = builtins[builtinId];
+  const impl = builtinFuncs[builtInName] || customBuiltins[builtInName];
+
+  if (impl === undefined) {
+    throw {
+      message: "not implemented: built-in function " +
+        builtinId +
+        ": " +
+        builtins[builtinId],
+    };
+  }
+
+  const argArray = Array.prototype.slice.apply(arguments);
+  const args = [];
+
+  for (let i = 5; i < argArray.length; i++) {
+    const jsArg = _dumpJSON(wasmInstance, memory, argArray[i]);
+    args.push(jsArg);
+  }
+
+  const result = impl(...args);
+
+  return _loadJSON(wasmInstance, memory, result);
+}
+
+/**
+ * _importObject builds the WebAssembly.Imports
+ * @param {Object} env
+ * @param {WebAssembly.Memory} memory
+ * @param {{ [builtinName: string]: Function }} customBuiltins
+ * @returns {WebAssembly.Imports}
+ */
+function _importObject(env, memory, customBuiltins) {
+  const addr2string = stringDecoder(memory);
+
+  return {
+    env: {
+      memory,
+      opa_abort: function (addr) {
+        throw addr2string(addr);
+      },
+      opa_println: function (addr) {
+        console.log(addr2string(addr));
+      },
+      opa_builtin0: function (builtinId, _ctx) {
+        return _builtinCall(
+          env.instance,
+          memory,
+          env.builtins,
+          customBuiltins,
+          builtinId,
+        );
+      },
+      opa_builtin1: function (builtinId, _ctx, arg1) {
+        return _builtinCall(
+          env.instance,
+          memory,
+          env.builtins,
+          customBuiltins,
+          builtinId,
+          arg1,
+        );
+      },
+      opa_builtin2: function (builtinId, _ctx, arg1, arg2) {
+        return _builtinCall(
+          env.instance,
+          memory,
+          env.builtins,
+          customBuiltins,
+          builtinId,
+          arg1,
+          arg2,
+        );
+      },
+      opa_builtin3: function (builtinId, _ctx, arg1, arg2, arg3) {
+        return _builtinCall(
+          env.instance,
+          memory,
+          env.builtins,
+          customBuiltins,
+          builtinId,
+          arg1,
+          arg2,
+          arg3,
+        );
+      },
+      opa_builtin4: function (builtinId, _ctx, arg1, arg2, arg3, arg4) {
+        return _builtinCall(
+          env.instance,
+          memory,
+          env.builtins,
+          customBuiltins,
+          builtinId,
+          arg1,
+          arg2,
+          arg3,
+          arg4,
+        );
+      },
+    },
+  };
+}
+
+/**
+ * _preparePolicy checks the ABI version and loads the built-in functions
+ * @param {Object} env
+ * @param {WebAssembly.WebAssemblyInstantiatedSource | WebAssembly.Instance} wasm
+ * @param {WebAssembly.Memory} memory
+ * @returns { policy: WebAssembly.WebAssemblyInstantiatedSource | WebAssembly.Instance, minorVersion: number }}
+ */
+function _preparePolicy(env, wasm, memory) {
+  env.instance = wasm.instance ? wasm.instance : wasm;
+
+  // Note: On Node 10.x this value is a number on Node 12.x and up it is
+  // an object with numberic `value` property.
+  const abiVersionGlobal = env.instance.exports.opa_wasm_abi_version;
+  if (abiVersionGlobal !== undefined) {
+    const abiVersion = typeof abiVersionGlobal === "number"
+      ? abiVersionGlobal
+      : abiVersionGlobal.value;
+    if (abiVersion !== 1) {
+      throw `unsupported ABI version ${abiVersion}`;
+    }
+  } else {
+    console.error("opa_wasm_abi_version undefined"); // logs to stderr
+  }
+
+  const abiMinorVersionGlobal = env.instance.exports.opa_wasm_abi_minor_version;
+  let abiMinorVersion;
+  if (abiMinorVersionGlobal !== undefined) {
+    abiMinorVersion = typeof abiMinorVersionGlobal === "number"
+      ? abiMinorVersionGlobal
+      : abiMinorVersionGlobal.value;
+  } else {
+    console.error("opa_wasm_abi_minor_version undefined");
+  }
+
+  const builtins = _dumpJSON(
+    env.instance,
+    memory,
+    env.instance.exports.builtins(),
+  );
+
+  /** @type {typeof builtIns} */
+  env.builtins = {};
+
+  for (const key of Object.keys(builtins)) {
+    env.builtins[builtins[key]] = key;
+  }
+
+  return { policy: wasm, minorVersion: abiMinorVersion };
+}
+
+/**
+ * _loadPolicy can take in either an ArrayBuffer or WebAssembly.Module
+ * as its first argument, a WebAssembly.Memory for the second parameter,
+ * and an object mapping string names to additional builtin functions for
+ * the third parameter.
+ * It will return a Promise, depending on the input type the promise
+ * resolves to both a compiled WebAssembly.Module and its first WebAssembly.Instance
+ * or to the WebAssemblyInstance.
+ * @param {BufferSource | WebAssembly.Module} policyWasm
+ * @param {WebAssembly.Memory} memory
+ * @param {{ [builtinName: string]: Function }} customBuiltins
+ * @returns {Promise<{ policy: WebAssembly.WebAssemblyInstantiatedSource | WebAssembly.Instance, minorVersion: number }>}
+ */
+async function _loadPolicy(policyWasm, memory, customBuiltins) {
+  const env = {};
+
+  const wasm = await WebAssembly.instantiate(
+    policyWasm,
+    _importObject(env, memory, customBuiltins),
+  );
+
+  return _preparePolicy(env, wasm, memory);
+}
+
+/**
+ * _loadPolicySync can take in either an ArrayBuffer or WebAssembly.Module
+ * as its first argument, a WebAssembly.Memory for the second parameter,
+ * and an object mapping string names to additional builtin functions for
+ * the third parameter.
+ * It will return a compiled WebAssembly.Module and its first WebAssembly.Instance.
+ * @param {BufferSource | WebAssembly.Module} policyWasm
+ * @param {WebAssembly.Memory} memory
+ * @param {{ [builtinName: string]: Function }} customBuiltins
+ * @returns {Promise<{ policy: WebAssembly.Instance, minorVersion: number }>}
+ */
+function _loadPolicySync(policyWasm, memory, customBuiltins) {
+  const env = {};
+
+  if (
+    policyWasm instanceof ArrayBuffer ||
+    policyWasm.buffer instanceof ArrayBuffer
+  ) {
+    policyWasm = new WebAssembly.Module(policyWasm);
+  }
+
+  const wasm = new WebAssembly.Instance(
+    policyWasm,
+    _importObject(env, memory, customBuiltins),
+  );
+
+  return _preparePolicy(env, wasm, memory);
+}
+
+/**
+ * LoadedPolicy is a wrapper around a WebAssembly.Instance and WebAssembly.Memory
+ * for a compiled Rego policy. There are helpers to run the wasm instance and
+ * handle the output from the policy wasm.
+ */
+class LoadedPolicy {
+  /**
+   * Loads and initializes a compiled Rego policy.
+   * @param {WebAssembly.WebAssemblyInstantiatedSource} policy
+   * @param {WebAssembly.Memory} memory
+   */
+  constructor(policy, memory, minorVersion) {
+    this.minorVersion = minorVersion;
+    this.mem = memory;
+
+    // Depending on how the wasm was instantiated "policy" might be a
+    // WebAssembly Instance or be a wrapper around the Module and
+    // Instance. We only care about the Instance.
+    this.wasmInstance = policy.instance ? policy.instance : policy;
+
+    this.dataAddr = _loadJSON(this.wasmInstance, this.mem, {});
+    this.baseHeapPtr = this.wasmInstance.exports.opa_heap_ptr_get();
+    this.dataHeapPtr = this.baseHeapPtr;
+    this.entrypoints = _dumpJSON(
+      this.wasmInstance,
+      this.mem,
+      this.wasmInstance.exports.entrypoints(),
+    );
+  }
+
+  /**
+   * Evaluates the loaded policy with the given input and
+   * return the result set. This should be re-used for multiple evaluations
+   * of the same policy with different inputs.
+   *
+   * To call a non-default entrypoint in your WASM specify it as the second
+   * param. A list of entrypoints can be accessed with the `this.entrypoints`
+   * property.
+   * @param {any | ArrayBuffer} input input to be evaluated in form of `object`, literal primitive or ArrayBuffer (last is assumed to be a well-formed stringified JSON)
+   * @param {number | string} entrypoint ID or name of the entrypoint to call (optional)
+   */
+  evaluate(input, entrypoint = 0) {
+    // determine entrypoint ID
+    if (typeof entrypoint === "number") {
+      // used as-is
+    } else if (typeof entrypoint === "string") {
+      if (Object.prototype.hasOwnProperty.call(this.entrypoints, entrypoint)) {
+        entrypoint = this.entrypoints[entrypoint];
+      } else {
+        throw `entrypoint ${entrypoint} is not valid in this instance`;
+      }
+    } else {
+      throw `entrypoint value is an invalid type, must be either string or number`;
+    }
+
+    // ABI 1.2 fastpath
+    if (this.minorVersion >= 2) {
+      // write input into memory, adjust heap pointer
+      let inputBuf = null;
+      let inputLen = 0;
+      let inputAddr = 0;
+      if (input) {
+        if (input instanceof ArrayBuffer) {
+          inputBuf = new Uint8Array(input);
+        } else {
+          const inputAsText = JSON.stringify(input);
+          inputBuf = new TextEncoder().encode(inputAsText);
+        }
+
+        inputAddr = this.dataHeapPtr;
+        inputLen = inputBuf.byteLength;
+        const delta = inputAddr + inputLen - this.mem.buffer.byteLength;
+        if (delta > 0) {
+          const pages = roundup(delta);
+          this.mem.grow(pages);
+        }
+        const buf = new Uint8Array(this.mem.buffer);
+        buf.set(inputBuf, this.dataHeapPtr);
+      }
+
+      // opa_eval will update the Instance heap pointer to the value below
+      const heapPtr = this.dataHeapPtr + inputLen;
+
+      const ret = this.wasmInstance.exports.opa_eval(
+        0,
+        entrypoint,
+        this.dataAddr,
+        inputAddr,
+        inputLen,
+        heapPtr,
+        0,
+      );
+      return _dumpJSONRaw(this.mem, ret);
+    }
+
+    // Reset the heap pointer before each evaluation
+    this.wasmInstance.exports.opa_heap_ptr_set(this.dataHeapPtr);
+
+    // Load the input data
+    const inputAddr = _loadJSON(this.wasmInstance, this.mem, input);
+
+    // Setup the evaluation context
+    const ctxAddr = this.wasmInstance.exports.opa_eval_ctx_new();
+    this.wasmInstance.exports.opa_eval_ctx_set_input(ctxAddr, inputAddr);
+    this.wasmInstance.exports.opa_eval_ctx_set_data(ctxAddr, this.dataAddr);
+    this.wasmInstance.exports.opa_eval_ctx_set_entrypoint(ctxAddr, entrypoint);
+
+    // Actually evaluate the policy
+    this.wasmInstance.exports.eval(ctxAddr);
+
+    // Retrieve the result
+    const resultAddr = this.wasmInstance.exports.opa_eval_ctx_get_result(
+      ctxAddr,
+    );
+    return _dumpJSON(this.wasmInstance, this.mem, resultAddr);
+  }
+
+  /**
+   * evalBool will evaluate the policy and return a boolean answer
+   * depending on the return code from the policy evaluation.
+   * @deprecated Use `evaluate` instead.
+   * @param {object} input
+   */
+  evalBool(input) {
+    const rs = this.evaluate(input);
+    return rs && rs.length === 1 && rs[0] === true;
+  }
+
+  /**
+   * Loads data for use in subsequent evaluations.
+   * @param {object | ArrayBuffer} data  data in form of `object` or ArrayBuffer (last is assumed to be a well-formed stringified JSON)
+   */
+  setData(data) {
+    this.wasmInstance.exports.opa_heap_ptr_set(this.baseHeapPtr);
+    this.dataAddr = _loadJSON(this.wasmInstance, this.mem, data);
+    this.dataHeapPtr = this.wasmInstance.exports.opa_heap_ptr_get();
+  }
+}
+
+function roundup(bytes) {
+  const pageSize = 64 * 1024;
+  return Math.ceil(bytes / pageSize);
+}
+
+module.exports = {
+  /**
+   * Takes in either an ArrayBuffer or WebAssembly.Module
+   * and will return a Promise of a LoadedPolicy object which
+   * can be used to evaluate the policy.
+   *
+   * To set custom memory size specify number of memory pages
+   * as second param.
+   * Defaults to 5 pages (320KB).
+   * @param {BufferSource | WebAssembly.Module} regoWasm
+   * @param {number | WebAssembly.MemoryDescriptor} memoryDescriptor For backwards-compatibility, a 'number' argument is taken to be the initial memory size.
+   * @param {{ [builtinName: string]: Function }} customBuiltins A map from string names to builtin functions
+   * @returns {Promise<LoadedPolicy>}
+   */
+  async loadPolicy(regoWasm, memoryDescriptor = {}, customBuiltins = {}) {
+    // back-compat, second arg used to be a number: 'memorySize', with default of 5
+    if (typeof memoryDescriptor === "number") {
+      memoryDescriptor = { initial: memoryDescriptor };
+    }
+    memoryDescriptor.initial = memoryDescriptor.initial || 5;
+
+    const memory = new WebAssembly.Memory(memoryDescriptor);
+    const { policy, minorVersion } = await _loadPolicy(
+      regoWasm,
+      memory,
+      customBuiltins,
+    );
+    return new LoadedPolicy(policy, memory, minorVersion);
+  },
+
+  /**
+   * Takes in either an ArrayBuffer or WebAssembly.Module
+   * and will return a LoadedPolicy object which can be
+   * used to evaluate the policy.
+   *
+   * This cannot be used from the main thread in a browser.
+   * You must use the `loadPolicy` function instead, or call
+   * from a worker thread.
+   *
+   * To set custom memory size specify number of memory pages
+   * as second param.
+   * Defaults to 5 pages (320KB).
+   * @param {BufferSource | WebAssembly.Module} regoWasm
+   * @param {number | WebAssembly.MemoryDescriptor} memoryDescriptor For backwards-compatibility, a 'number' argument is taken to be the initial memory size.
+   * @param {{ [builtinName: string]: Function }} customBuiltins A map from string names to builtin functions
+   * @returns {LoadedPolicy}
+   */
+  loadPolicySync(regoWasm, memoryDescriptor = {}, customBuiltins = {}) {
+    // back-compat, second arg used to be a number: 'memorySize', with default of 5
+    if (typeof memoryDescriptor === "number") {
+      memoryDescriptor = { initial: memoryDescriptor };
+    }
+    memoryDescriptor.initial = memoryDescriptor.initial || 5;
+
+    const memory = new WebAssembly.Memory(memoryDescriptor);
+    const { policy, minorVersion } = _loadPolicySync(
+      regoWasm,
+      memory,
+      customBuiltins,
+    );
+    return new LoadedPolicy(policy, memory, minorVersion);
+  },
+};
+
+
+/***/ }),
+
 /***/ 4941:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -10018,6 +10651,387 @@ module.exports = {
 
 /***/ }),
 
+/***/ 3023:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+
+
+const os = __nccwpck_require__(2037);
+const path = __nccwpck_require__(1017);
+const isWin = os.platform() === 'win32';
+
+const CHARS = { '{': '}', '(': ')', '[': ']'};
+const STRICT = /\\(.)|(^!|\*|[\].+)]\?|\[[^\\\]]+\]|\{[^\\}]+\}|\(\?[:!=][^\\)]+\)|\([^|]+\|[^\\)]+\)|(\\).|([@?!+*]\(.*\)))/;
+const RELAXED = /\\(.)|(^!|[*?{}()[\]]|\(\?)/;
+
+/**
+ * Detect if a string cointains glob
+ * @param {String} str Input string
+ * @param {Object} [options] Configuration object
+ * @param {Boolean} [options.strict=true] Use relaxed regex if true
+ * @returns {Boolean} true if string contains glob
+ */
+function isglob(str, { strict = true } = {}) {
+  if (str === '') return false;
+  let match, rgx = strict ? STRICT : RELAXED;
+
+  while ((match = rgx.exec(str))) {
+    if (match[2]) return true;
+    let idx = match.index + match[0].length;
+
+    // if an open bracket/brace/paren is escaped,
+    // set the index to the next closing character
+    let open = match[1];
+    let close = open ? CHARS[open] : null;
+    if (open && close) {
+      let n = str.indexOf(close, idx);
+      if (n !== -1)  idx = n + 1;
+    }
+
+    str = str.slice(idx);
+  }
+  return false;
+}
+
+
+/**
+ * Find the static part of a glob-path,
+ * split path and return path part
+ * @param {String} str Path/glob string
+ * @returns {String} static path section of glob
+ */
+function parent(str, { strict = false } = {}) {
+  if (isWin && str.includes('/'))
+    str = str.split('\\').join('/');
+
+	// special case for strings ending in enclosure containing path separator
+	if (/[\{\[].*[\/]*.*[\}\]]$/.test(str)) str += '/';
+
+	// preserves full path in case of trailing path separator
+	str += 'a';
+
+	do {str = path.dirname(str)}
+	while (isglob(str, {strict}) || /(^|[^\\])([\{\[]|\([^\)]+$)/.test(str));
+
+	// remove escape chars and return result
+	return str.replace(/\\([\*\?\|\[\]\(\)\{\}])/g, '$1');
+};
+
+
+/**
+ * Parse a glob path, and split it by static/glob part
+ * @param {String} pattern String path
+ * @param {Object} [opts] Options
+ * @param {Object} [opts.strict=false] Use strict parsing
+ * @returns {Object} object with parsed path
+ */
+function globalyzer(pattern, opts = {}) {
+    let base = parent(pattern, opts);
+    let isGlob = isglob(pattern, opts);
+    let glob;
+
+    if (base != '.') {
+        glob = pattern.substr(base.length);
+        if (glob.startsWith('/')) glob = glob.substr(1);
+    } else {
+        glob = pattern;
+    }
+
+    if (!isGlob) {
+        base = path.dirname(pattern);
+        glob = base !== '.' ? pattern.substr(base.length) : pattern;
+    }
+
+    if (glob.startsWith('./')) glob = glob.substr(2);
+    if (glob.startsWith('/')) glob = glob.substr(1);
+
+    return { base, glob, isGlob };
+}
+
+
+module.exports = globalyzer;
+
+
+/***/ }),
+
+/***/ 3927:
+/***/ ((module) => {
+
+const isWin = process.platform === 'win32';
+const SEP = isWin ? `\\\\+` : `\\/`;
+const SEP_ESC = isWin ? `\\\\` : `/`;
+const GLOBSTAR = `((?:[^/]*(?:/|$))*)`;
+const WILDCARD = `([^/]*)`;
+const GLOBSTAR_SEGMENT = `((?:[^${SEP_ESC}]*(?:${SEP_ESC}|$))*)`;
+const WILDCARD_SEGMENT = `([^${SEP_ESC}]*)`;
+
+/**
+ * Convert any glob pattern to a JavaScript Regexp object
+ * @param {String} glob Glob pattern to convert
+ * @param {Object} opts Configuration object
+ * @param {Boolean} [opts.extended=false] Support advanced ext globbing
+ * @param {Boolean} [opts.globstar=false] Support globstar
+ * @param {Boolean} [opts.strict=true] be laissez faire about mutiple slashes
+ * @param {Boolean} [opts.filepath=''] Parse as filepath for extra path related features
+ * @param {String} [opts.flags=''] RegExp globs
+ * @returns {Object} converted object with string, segments and RegExp object
+ */
+function globrex(glob, {extended = false, globstar = false, strict = false, filepath = false, flags = ''} = {}) {
+    let regex = '';
+    let segment = '';
+    let path = { regex: '', segments: [] };
+
+    // If we are doing extended matching, this boolean is true when we are inside
+    // a group (eg {*.html,*.js}), and false otherwise.
+    let inGroup = false;
+    let inRange = false;
+
+    // extglob stack. Keep track of scope
+    const ext = [];
+
+    // Helper function to build string and segments
+    function add(str, {split, last, only}={}) {
+        if (only !== 'path') regex += str;
+        if (filepath && only !== 'regex') {
+            path.regex += (str === '\\/' ? SEP : str);
+            if (split) {
+                if (last) segment += str;
+                if (segment !== '') {
+                    if (!flags.includes('g')) segment = `^${segment}$`; // change it 'includes'
+                    path.segments.push(new RegExp(segment, flags));
+                }
+                segment = '';
+            } else {
+                segment += str;
+            }
+        }
+    }
+
+    let c, n;
+    for (let i = 0; i < glob.length; i++) {
+        c = glob[i];
+        n = glob[i + 1];
+
+        if (['\\', '$', '^', '.', '='].includes(c)) {
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === '/') {
+            add(`\\${c}`, {split: true});
+            if (n === '/' && !strict) regex += '?';
+            continue;
+        }
+
+        if (c === '(') {
+            if (ext.length) {
+                add(c);
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === ')') {
+            if (ext.length) {
+                add(c);
+                let type = ext.pop();
+                if (type === '@') {
+                    add('{1}');
+                } else if (type === '!') {
+                    add('([^\/]*)');
+                } else {
+                    add(type);
+                }
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+        
+        if (c === '|') {
+            if (ext.length) {
+                add(c);
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === '+') {
+            if (n === '(' && extended) {
+                ext.push(c);
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === '@' && extended) {
+            if (n === '(') {
+                ext.push(c);
+                continue;
+            }
+        }
+
+        if (c === '!') {
+            if (extended) {
+                if (inRange) {
+                    add('^');
+                    continue
+                }
+                if (n === '(') {
+                    ext.push(c);
+                    add('(?!');
+                    i++;
+                    continue;
+                }
+                add(`\\${c}`);
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === '?') {
+            if (extended) {
+                if (n === '(') {
+                    ext.push(c);
+                } else {
+                    add('.');
+                }
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === '[') {
+            if (inRange && n === ':') {
+                i++; // skip [
+                let value = '';
+                while(glob[++i] !== ':') value += glob[i];
+                if (value === 'alnum') add('(\\w|\\d)');
+                else if (value === 'space') add('\\s');
+                else if (value === 'digit') add('\\d');
+                i++; // skip last ]
+                continue;
+            }
+            if (extended) {
+                inRange = true;
+                add(c);
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === ']') {
+            if (extended) {
+                inRange = false;
+                add(c);
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === '{') {
+            if (extended) {
+                inGroup = true;
+                add('(');
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === '}') {
+            if (extended) {
+                inGroup = false;
+                add(')');
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === ',') {
+            if (inGroup) {
+                add('|');
+                continue;
+            }
+            add(`\\${c}`);
+            continue;
+        }
+
+        if (c === '*') {
+            if (n === '(' && extended) {
+                ext.push(c);
+                continue;
+            }
+            // Move over all consecutive "*"'s.
+            // Also store the previous and next characters
+            let prevChar = glob[i - 1];
+            let starCount = 1;
+            while (glob[i + 1] === '*') {
+                starCount++;
+                i++;
+            }
+            let nextChar = glob[i + 1];
+            if (!globstar) {
+                // globstar is disabled, so treat any number of "*" as one
+                add('.*');
+            } else {
+                // globstar is enabled, so determine if this is a globstar segment
+                let isGlobstar =
+                    starCount > 1 && // multiple "*"'s
+                    (prevChar === '/' || prevChar === undefined) && // from the start of the segment
+                    (nextChar === '/' || nextChar === undefined); // to the end of the segment
+                if (isGlobstar) {
+                    // it's a globstar, so match zero or more path segments
+                    add(GLOBSTAR, {only:'regex'});
+                    add(GLOBSTAR_SEGMENT, {only:'path', last:true, split:true});
+                    i++; // move over the "/"
+                } else {
+                    // it's not a globstar, so only match one path segment
+                    add(WILDCARD, {only:'regex'});
+                    add(WILDCARD_SEGMENT, {only:'path'});
+                }
+            }
+            continue;
+        }
+
+        add(c);
+    }
+
+
+    // When regexp 'g' flag is specified don't
+    // constrain the regular expression with ^ & $
+    if (!flags.includes('g')) {
+        regex = `^${regex}$`;
+        segment = `^${segment}$`;
+        if (filepath) path.regex = `^${path.regex}$`;
+    }
+
+    const result = {regex: new RegExp(regex, flags)};
+
+    // Push the last segment
+    if (filepath) {
+        path.segments.push(new RegExp(segment, flags));
+        path.regex = new RegExp(path.regex, flags);
+        path.globstar = new RegExp(!flags.includes('g') ? `^${GLOBSTAR_SEGMENT}$` : GLOBSTAR_SEGMENT, flags);
+        result.path = path;
+    }
+
+    return result;
+}
+
+module.exports = globrex;
+
+
+/***/ }),
+
 /***/ 7356:
 /***/ ((module) => {
 
@@ -11506,6 +12520,34 @@ module.exports = WeakMap;
 
 /***/ }),
 
+/***/ 9647:
+/***/ ((module) => {
+
+/**
+ * A faster alternative to `Function#apply`, this function invokes `func`
+ * with the `this` binding of `thisArg` and the arguments of `args`.
+ *
+ * @private
+ * @param {Function} func The function to invoke.
+ * @param {*} thisArg The `this` binding of `func`.
+ * @param {Array} args The arguments to invoke `func` with.
+ * @returns {*} Returns the result of `func`.
+ */
+function apply(func, thisArg, args) {
+  switch (args.length) {
+    case 0: return func.call(thisArg);
+    case 1: return func.call(thisArg, args[0]);
+    case 2: return func.call(thisArg, args[0], args[1]);
+    case 3: return func.call(thisArg, args[0], args[1], args[2]);
+  }
+  return func.apply(thisArg, args);
+}
+
+module.exports = apply;
+
+
+/***/ }),
+
 /***/ 9173:
 /***/ ((module) => {
 
@@ -11708,6 +12750,68 @@ module.exports = arraySome;
 
 /***/ }),
 
+/***/ 1950:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseAssignValue = __nccwpck_require__(3868),
+    eq = __nccwpck_require__(1901);
+
+/**
+ * This function is like `assignValue` except that it doesn't assign
+ * `undefined` values.
+ *
+ * @private
+ * @param {Object} object The object to modify.
+ * @param {string} key The key of the property to assign.
+ * @param {*} value The value to assign.
+ */
+function assignMergeValue(object, key, value) {
+  if ((value !== undefined && !eq(object[key], value)) ||
+      (value === undefined && !(key in object))) {
+    baseAssignValue(object, key, value);
+  }
+}
+
+module.exports = assignMergeValue;
+
+
+/***/ }),
+
+/***/ 9725:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseAssignValue = __nccwpck_require__(3868),
+    eq = __nccwpck_require__(1901);
+
+/** Used for built-in method references. */
+var objectProto = Object.prototype;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/**
+ * Assigns `value` to `key` of `object` if the existing value is not equivalent
+ * using [`SameValueZero`](http://ecma-international.org/ecma-262/7.0/#sec-samevaluezero)
+ * for equality comparisons.
+ *
+ * @private
+ * @param {Object} object The object to modify.
+ * @param {string} key The key of the property to assign.
+ * @param {*} value The value to assign.
+ */
+function assignValue(object, key, value) {
+  var objValue = object[key];
+  if (!(hasOwnProperty.call(object, key) && eq(objValue, value)) ||
+      (value === undefined && !(key in object))) {
+    baseAssignValue(object, key, value);
+  }
+}
+
+module.exports = assignValue;
+
+
+/***/ }),
+
 /***/ 6752:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -11792,6 +12896,43 @@ function baseAssignValue(object, key, value) {
 }
 
 module.exports = baseAssignValue;
+
+
+/***/ }),
+
+/***/ 6706:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var isObject = __nccwpck_require__(3334);
+
+/** Built-in value references. */
+var objectCreate = Object.create;
+
+/**
+ * The base implementation of `_.create` without support for assigning
+ * properties to the created object.
+ *
+ * @private
+ * @param {Object} proto The object to inherit from.
+ * @returns {Object} Returns the new object.
+ */
+var baseCreate = (function() {
+  function object() {}
+  return function(proto) {
+    if (!isObject(proto)) {
+      return {};
+    }
+    if (objectCreate) {
+      return objectCreate(proto);
+    }
+    object.prototype = proto;
+    var result = new object;
+    object.prototype = undefined;
+    return result;
+  };
+}());
+
+module.exports = baseCreate;
 
 
 /***/ }),
@@ -12001,7 +13142,7 @@ module.exports = baseIsArguments;
 
 /***/ }),
 
-/***/ 8494:
+/***/ 4047:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var baseIsEqualDeep = __nccwpck_require__(3987),
@@ -12130,7 +13271,7 @@ module.exports = baseIsEqualDeep;
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var Stack = __nccwpck_require__(5323),
-    baseIsEqual = __nccwpck_require__(8494);
+    baseIsEqual = __nccwpck_require__(4047);
 
 /** Used to compose bitmasks for value comparisons. */
 var COMPARE_PARTIAL_FLAG = 1,
@@ -12391,6 +13532,46 @@ module.exports = baseKeys;
 
 /***/ }),
 
+/***/ 297:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var isObject = __nccwpck_require__(3334),
+    isPrototype = __nccwpck_require__(10),
+    nativeKeysIn = __nccwpck_require__(5383);
+
+/** Used for built-in method references. */
+var objectProto = Object.prototype;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/**
+ * The base implementation of `_.keysIn` which doesn't treat sparse arrays as dense.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names.
+ */
+function baseKeysIn(object) {
+  if (!isObject(object)) {
+    return nativeKeysIn(object);
+  }
+  var isProto = isPrototype(object),
+      result = [];
+
+  for (var key in object) {
+    if (!(key == 'constructor' && (isProto || !hasOwnProperty.call(object, key)))) {
+      result.push(key);
+    }
+  }
+  return result;
+}
+
+module.exports = baseKeysIn;
+
+
+/***/ }),
+
 /***/ 599:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -12423,7 +13604,7 @@ module.exports = baseMatches;
 /***/ 7591:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
-var baseIsEqual = __nccwpck_require__(8494),
+var baseIsEqual = __nccwpck_require__(4047),
     get = __nccwpck_require__(6908),
     hasIn = __nccwpck_require__(9409),
     isKey = __nccwpck_require__(9084),
@@ -12456,6 +13637,156 @@ function baseMatchesProperty(path, srcValue) {
 }
 
 module.exports = baseMatchesProperty;
+
+
+/***/ }),
+
+/***/ 5451:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var Stack = __nccwpck_require__(5323),
+    assignMergeValue = __nccwpck_require__(1950),
+    baseFor = __nccwpck_require__(6588),
+    baseMergeDeep = __nccwpck_require__(5254),
+    isObject = __nccwpck_require__(3334),
+    keysIn = __nccwpck_require__(9109),
+    safeGet = __nccwpck_require__(9020);
+
+/**
+ * The base implementation of `_.merge` without support for multiple sources.
+ *
+ * @private
+ * @param {Object} object The destination object.
+ * @param {Object} source The source object.
+ * @param {number} srcIndex The index of `source`.
+ * @param {Function} [customizer] The function to customize merged values.
+ * @param {Object} [stack] Tracks traversed source values and their merged
+ *  counterparts.
+ */
+function baseMerge(object, source, srcIndex, customizer, stack) {
+  if (object === source) {
+    return;
+  }
+  baseFor(source, function(srcValue, key) {
+    stack || (stack = new Stack);
+    if (isObject(srcValue)) {
+      baseMergeDeep(object, source, key, srcIndex, baseMerge, customizer, stack);
+    }
+    else {
+      var newValue = customizer
+        ? customizer(safeGet(object, key), srcValue, (key + ''), object, source, stack)
+        : undefined;
+
+      if (newValue === undefined) {
+        newValue = srcValue;
+      }
+      assignMergeValue(object, key, newValue);
+    }
+  }, keysIn);
+}
+
+module.exports = baseMerge;
+
+
+/***/ }),
+
+/***/ 5254:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var assignMergeValue = __nccwpck_require__(1950),
+    cloneBuffer = __nccwpck_require__(2974),
+    cloneTypedArray = __nccwpck_require__(7764),
+    copyArray = __nccwpck_require__(5157),
+    initCloneObject = __nccwpck_require__(1532),
+    isArguments = __nccwpck_require__(8495),
+    isArray = __nccwpck_require__(4869),
+    isArrayLikeObject = __nccwpck_require__(7996),
+    isBuffer = __nccwpck_require__(4190),
+    isFunction = __nccwpck_require__(7799),
+    isObject = __nccwpck_require__(3334),
+    isPlainObject = __nccwpck_require__(6169),
+    isTypedArray = __nccwpck_require__(2496),
+    safeGet = __nccwpck_require__(9020),
+    toPlainObject = __nccwpck_require__(9321);
+
+/**
+ * A specialized version of `baseMerge` for arrays and objects which performs
+ * deep merges and tracks traversed objects enabling objects with circular
+ * references to be merged.
+ *
+ * @private
+ * @param {Object} object The destination object.
+ * @param {Object} source The source object.
+ * @param {string} key The key of the value to merge.
+ * @param {number} srcIndex The index of `source`.
+ * @param {Function} mergeFunc The function to merge values.
+ * @param {Function} [customizer] The function to customize assigned values.
+ * @param {Object} [stack] Tracks traversed source values and their merged
+ *  counterparts.
+ */
+function baseMergeDeep(object, source, key, srcIndex, mergeFunc, customizer, stack) {
+  var objValue = safeGet(object, key),
+      srcValue = safeGet(source, key),
+      stacked = stack.get(srcValue);
+
+  if (stacked) {
+    assignMergeValue(object, key, stacked);
+    return;
+  }
+  var newValue = customizer
+    ? customizer(objValue, srcValue, (key + ''), object, source, stack)
+    : undefined;
+
+  var isCommon = newValue === undefined;
+
+  if (isCommon) {
+    var isArr = isArray(srcValue),
+        isBuff = !isArr && isBuffer(srcValue),
+        isTyped = !isArr && !isBuff && isTypedArray(srcValue);
+
+    newValue = srcValue;
+    if (isArr || isBuff || isTyped) {
+      if (isArray(objValue)) {
+        newValue = objValue;
+      }
+      else if (isArrayLikeObject(objValue)) {
+        newValue = copyArray(objValue);
+      }
+      else if (isBuff) {
+        isCommon = false;
+        newValue = cloneBuffer(srcValue, true);
+      }
+      else if (isTyped) {
+        isCommon = false;
+        newValue = cloneTypedArray(srcValue, true);
+      }
+      else {
+        newValue = [];
+      }
+    }
+    else if (isPlainObject(srcValue) || isArguments(srcValue)) {
+      newValue = objValue;
+      if (isArguments(objValue)) {
+        newValue = toPlainObject(objValue);
+      }
+      else if (!isObject(objValue) || isFunction(objValue)) {
+        newValue = initCloneObject(srcValue);
+      }
+    }
+    else {
+      isCommon = false;
+    }
+  }
+  if (isCommon) {
+    // Recursively merge objects and arrays (susceptible to call stack limits).
+    stack.set(srcValue, newValue);
+    mergeFunc(newValue, srcValue, srcIndex, customizer, stack);
+    stack['delete'](srcValue);
+  }
+  assignMergeValue(object, key, newValue);
+}
+
+module.exports = baseMergeDeep;
 
 
 /***/ }),
@@ -12500,6 +13831,97 @@ function basePropertyDeep(path) {
 }
 
 module.exports = basePropertyDeep;
+
+
+/***/ }),
+
+/***/ 5979:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var identity = __nccwpck_require__(7822),
+    overRest = __nccwpck_require__(2417),
+    setToString = __nccwpck_require__(8416);
+
+/**
+ * The base implementation of `_.rest` which doesn't validate or coerce arguments.
+ *
+ * @private
+ * @param {Function} func The function to apply a rest parameter to.
+ * @param {number} [start=func.length-1] The start position of the rest parameter.
+ * @returns {Function} Returns the new function.
+ */
+function baseRest(func, start) {
+  return setToString(overRest(func, start, identity), func + '');
+}
+
+module.exports = baseRest;
+
+
+/***/ }),
+
+/***/ 979:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var constant = __nccwpck_require__(5946),
+    defineProperty = __nccwpck_require__(416),
+    identity = __nccwpck_require__(7822);
+
+/**
+ * The base implementation of `setToString` without support for hot loop shorting.
+ *
+ * @private
+ * @param {Function} func The function to modify.
+ * @param {Function} string The `toString` result.
+ * @returns {Function} Returns `func`.
+ */
+var baseSetToString = !defineProperty ? identity : function(func, string) {
+  return defineProperty(func, 'toString', {
+    'configurable': true,
+    'enumerable': false,
+    'value': constant(string),
+    'writable': true
+  });
+};
+
+module.exports = baseSetToString;
+
+
+/***/ }),
+
+/***/ 8758:
+/***/ ((module) => {
+
+/**
+ * The base implementation of `_.slice` without an iteratee call guard.
+ *
+ * @private
+ * @param {Array} array The array to slice.
+ * @param {number} [start=0] The start position.
+ * @param {number} [end=array.length] The end position.
+ * @returns {Array} Returns the slice of `array`.
+ */
+function baseSlice(array, start, end) {
+  var index = -1,
+      length = array.length;
+
+  if (start < 0) {
+    start = -start > length ? 0 : (length + start);
+  }
+  end = end > length ? length : end;
+  if (end < 0) {
+    end += length;
+  }
+  length = start > end ? 0 : ((end - start) >>> 0);
+  start >>>= 0;
+
+  var result = Array(length);
+  while (++index < length) {
+    result[index] = array[index + start];
+  }
+  return result;
+}
+
+module.exports = baseSlice;
 
 
 /***/ }),
@@ -12575,6 +13997,32 @@ module.exports = baseToString;
 
 /***/ }),
 
+/***/ 9528:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var trimmedEndIndex = __nccwpck_require__(7010);
+
+/** Used to match leading whitespace. */
+var reTrimStart = /^\s+/;
+
+/**
+ * The base implementation of `_.trim`.
+ *
+ * @private
+ * @param {string} string The string to trim.
+ * @returns {string} Returns the trimmed string.
+ */
+function baseTrim(string) {
+  return string
+    ? string.slice(0, trimmedEndIndex(string) + 1).replace(reTrimStart, '')
+    : string;
+}
+
+module.exports = baseTrim;
+
+
+/***/ }),
+
 /***/ 9258:
 /***/ ((module) => {
 
@@ -12644,6 +14092,169 @@ module.exports = castPath;
 
 /***/ }),
 
+/***/ 1094:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var Uint8Array = __nccwpck_require__(3261);
+
+/**
+ * Creates a clone of `arrayBuffer`.
+ *
+ * @private
+ * @param {ArrayBuffer} arrayBuffer The array buffer to clone.
+ * @returns {ArrayBuffer} Returns the cloned array buffer.
+ */
+function cloneArrayBuffer(arrayBuffer) {
+  var result = new arrayBuffer.constructor(arrayBuffer.byteLength);
+  new Uint8Array(result).set(new Uint8Array(arrayBuffer));
+  return result;
+}
+
+module.exports = cloneArrayBuffer;
+
+
+/***/ }),
+
+/***/ 2974:
+/***/ ((module, exports, __nccwpck_require__) => {
+
+/* module decorator */ module = __nccwpck_require__.nmd(module);
+var root = __nccwpck_require__(9882);
+
+/** Detect free variable `exports`. */
+var freeExports =  true && exports && !exports.nodeType && exports;
+
+/** Detect free variable `module`. */
+var freeModule = freeExports && "object" == 'object' && module && !module.nodeType && module;
+
+/** Detect the popular CommonJS extension `module.exports`. */
+var moduleExports = freeModule && freeModule.exports === freeExports;
+
+/** Built-in value references. */
+var Buffer = moduleExports ? root.Buffer : undefined,
+    allocUnsafe = Buffer ? Buffer.allocUnsafe : undefined;
+
+/**
+ * Creates a clone of  `buffer`.
+ *
+ * @private
+ * @param {Buffer} buffer The buffer to clone.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Buffer} Returns the cloned buffer.
+ */
+function cloneBuffer(buffer, isDeep) {
+  if (isDeep) {
+    return buffer.slice();
+  }
+  var length = buffer.length,
+      result = allocUnsafe ? allocUnsafe(length) : new buffer.constructor(length);
+
+  buffer.copy(result);
+  return result;
+}
+
+module.exports = cloneBuffer;
+
+
+/***/ }),
+
+/***/ 7764:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var cloneArrayBuffer = __nccwpck_require__(1094);
+
+/**
+ * Creates a clone of `typedArray`.
+ *
+ * @private
+ * @param {Object} typedArray The typed array to clone.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Object} Returns the cloned typed array.
+ */
+function cloneTypedArray(typedArray, isDeep) {
+  var buffer = isDeep ? cloneArrayBuffer(typedArray.buffer) : typedArray.buffer;
+  return new typedArray.constructor(buffer, typedArray.byteOffset, typedArray.length);
+}
+
+module.exports = cloneTypedArray;
+
+
+/***/ }),
+
+/***/ 5157:
+/***/ ((module) => {
+
+/**
+ * Copies the values of `source` to `array`.
+ *
+ * @private
+ * @param {Array} source The array to copy values from.
+ * @param {Array} [array=[]] The array to copy values to.
+ * @returns {Array} Returns `array`.
+ */
+function copyArray(source, array) {
+  var index = -1,
+      length = source.length;
+
+  array || (array = Array(length));
+  while (++index < length) {
+    array[index] = source[index];
+  }
+  return array;
+}
+
+module.exports = copyArray;
+
+
+/***/ }),
+
+/***/ 6388:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var assignValue = __nccwpck_require__(9725),
+    baseAssignValue = __nccwpck_require__(3868);
+
+/**
+ * Copies properties of `source` to `object`.
+ *
+ * @private
+ * @param {Object} source The object to copy properties from.
+ * @param {Array} props The property identifiers to copy.
+ * @param {Object} [object={}] The object to copy properties to.
+ * @param {Function} [customizer] The function to customize copied values.
+ * @returns {Object} Returns `object`.
+ */
+function copyObject(source, props, object, customizer) {
+  var isNew = !object;
+  object || (object = {});
+
+  var index = -1,
+      length = props.length;
+
+  while (++index < length) {
+    var key = props[index];
+
+    var newValue = customizer
+      ? customizer(object[key], source[key], key, object, source)
+      : undefined;
+
+    if (newValue === undefined) {
+      newValue = source[key];
+    }
+    if (isNew) {
+      baseAssignValue(object, key, newValue);
+    } else {
+      assignValue(object, key, newValue);
+    }
+  }
+  return object;
+}
+
+module.exports = copyObject;
+
+
+/***/ }),
+
 /***/ 8380:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -12683,6 +14294,50 @@ function createAggregator(setter, initializer) {
 }
 
 module.exports = createAggregator;
+
+
+/***/ }),
+
+/***/ 1911:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseRest = __nccwpck_require__(5979),
+    isIterateeCall = __nccwpck_require__(8494);
+
+/**
+ * Creates a function like `_.assign`.
+ *
+ * @private
+ * @param {Function} assigner The function to assign values.
+ * @returns {Function} Returns the new assigner function.
+ */
+function createAssigner(assigner) {
+  return baseRest(function(object, sources) {
+    var index = -1,
+        length = sources.length,
+        customizer = length > 1 ? sources[length - 1] : undefined,
+        guard = length > 2 ? sources[2] : undefined;
+
+    customizer = (assigner.length > 3 && typeof customizer == 'function')
+      ? (length--, customizer)
+      : undefined;
+
+    if (guard && isIterateeCall(sources[0], sources[1], guard)) {
+      customizer = length < 3 ? undefined : customizer;
+      length = 1;
+    }
+    object = Object(object);
+    while (++index < length) {
+      var source = sources[index];
+      if (source) {
+        assigner(object, source, index, customizer);
+      }
+    }
+    return object;
+  });
+}
+
+module.exports = createAssigner;
 
 
 /***/ }),
@@ -13197,6 +14852,19 @@ module.exports = getNative;
 
 /***/ }),
 
+/***/ 6271:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var overArg = __nccwpck_require__(6320);
+
+/** Built-in value references. */
+var getPrototype = overArg(Object.getPrototypeOf, Object);
+
+module.exports = getPrototype;
+
+
+/***/ }),
+
 /***/ 923:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -13561,6 +15229,31 @@ module.exports = hashSet;
 
 /***/ }),
 
+/***/ 1532:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseCreate = __nccwpck_require__(6706),
+    getPrototype = __nccwpck_require__(6271),
+    isPrototype = __nccwpck_require__(10);
+
+/**
+ * Initializes an object clone.
+ *
+ * @private
+ * @param {Object} object The object to clone.
+ * @returns {Object} Returns the initialized clone.
+ */
+function initCloneObject(object) {
+  return (typeof object.constructor == 'function' && !isPrototype(object))
+    ? baseCreate(getPrototype(object))
+    : {};
+}
+
+module.exports = initCloneObject;
+
+
+/***/ }),
+
 /***/ 2936:
 /***/ ((module) => {
 
@@ -13589,6 +15282,43 @@ function isIndex(value, length) {
 }
 
 module.exports = isIndex;
+
+
+/***/ }),
+
+/***/ 8494:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var eq = __nccwpck_require__(1901),
+    isArrayLike = __nccwpck_require__(8017),
+    isIndex = __nccwpck_require__(2936),
+    isObject = __nccwpck_require__(3334);
+
+/**
+ * Checks if the given arguments are from an iteratee call.
+ *
+ * @private
+ * @param {*} value The potential iteratee value argument.
+ * @param {*} index The potential iteratee index or key argument.
+ * @param {*} object The potential iteratee object argument.
+ * @returns {boolean} Returns `true` if the arguments are from an iteratee call,
+ *  else `false`.
+ */
+function isIterateeCall(value, index, object) {
+  if (!isObject(object)) {
+    return false;
+  }
+  var type = typeof index;
+  if (type == 'number'
+        ? (isArrayLike(object) && isIndex(index, object.length))
+        : (type == 'string' && index in object)
+      ) {
+    return eq(object[index], value);
+  }
+  return false;
+}
+
+module.exports = isIterateeCall;
 
 
 /***/ }),
@@ -14108,6 +15838,33 @@ module.exports = nativeKeys;
 
 /***/ }),
 
+/***/ 5383:
+/***/ ((module) => {
+
+/**
+ * This function is like
+ * [`Object.keys`](http://ecma-international.org/ecma-262/7.0/#sec-object.keys)
+ * except that it includes inherited enumerable properties.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names.
+ */
+function nativeKeysIn(object) {
+  var result = [];
+  if (object != null) {
+    for (var key in Object(object)) {
+      result.push(key);
+    }
+  }
+  return result;
+}
+
+module.exports = nativeKeysIn;
+
+
+/***/ }),
+
 /***/ 4643:
 /***/ ((module, exports, __nccwpck_require__) => {
 
@@ -14197,6 +15954,49 @@ module.exports = overArg;
 
 /***/ }),
 
+/***/ 2417:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var apply = __nccwpck_require__(9647);
+
+/* Built-in method references for those with the same name as other `lodash` methods. */
+var nativeMax = Math.max;
+
+/**
+ * A specialized version of `baseRest` which transforms the rest array.
+ *
+ * @private
+ * @param {Function} func The function to apply a rest parameter to.
+ * @param {number} [start=func.length-1] The start position of the rest parameter.
+ * @param {Function} transform The rest array transform.
+ * @returns {Function} Returns the new function.
+ */
+function overRest(func, start, transform) {
+  start = nativeMax(start === undefined ? (func.length - 1) : start, 0);
+  return function() {
+    var args = arguments,
+        index = -1,
+        length = nativeMax(args.length - start, 0),
+        array = Array(length);
+
+    while (++index < length) {
+      array[index] = args[start + index];
+    }
+    index = -1;
+    var otherArgs = Array(start + 1);
+    while (++index < start) {
+      otherArgs[index] = args[index];
+    }
+    otherArgs[start] = transform(array);
+    return apply(func, this, otherArgs);
+  };
+}
+
+module.exports = overRest;
+
+
+/***/ }),
+
 /***/ 9882:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -14209,6 +16009,34 @@ var freeSelf = typeof self == 'object' && self && self.Object === Object && self
 var root = freeGlobal || freeSelf || Function('return this')();
 
 module.exports = root;
+
+
+/***/ }),
+
+/***/ 9020:
+/***/ ((module) => {
+
+/**
+ * Gets the value at `key`, unless `key` is "__proto__" or "constructor".
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @param {string} key The key of the property to get.
+ * @returns {*} Returns the property value.
+ */
+function safeGet(object, key) {
+  if (key === 'constructor' && typeof object[key] === 'function') {
+    return;
+  }
+
+  if (key == '__proto__') {
+    return;
+  }
+
+  return object[key];
+}
+
+module.exports = safeGet;
 
 
 /***/ }),
@@ -14281,6 +16109,71 @@ function setToArray(set) {
 }
 
 module.exports = setToArray;
+
+
+/***/ }),
+
+/***/ 8416:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseSetToString = __nccwpck_require__(979),
+    shortOut = __nccwpck_require__(7882);
+
+/**
+ * Sets the `toString` method of `func` to return `string`.
+ *
+ * @private
+ * @param {Function} func The function to modify.
+ * @param {Function} string The `toString` result.
+ * @returns {Function} Returns `func`.
+ */
+var setToString = shortOut(baseSetToString);
+
+module.exports = setToString;
+
+
+/***/ }),
+
+/***/ 7882:
+/***/ ((module) => {
+
+/** Used to detect hot functions by number of calls within a span of milliseconds. */
+var HOT_COUNT = 800,
+    HOT_SPAN = 16;
+
+/* Built-in method references for those with the same name as other `lodash` methods. */
+var nativeNow = Date.now;
+
+/**
+ * Creates a function that'll short out and invoke `identity` instead
+ * of `func` when it's called `HOT_COUNT` or more times in `HOT_SPAN`
+ * milliseconds.
+ *
+ * @private
+ * @param {Function} func The function to restrict.
+ * @returns {Function} Returns the new shortable function.
+ */
+function shortOut(func) {
+  var count = 0,
+      lastCalled = 0;
+
+  return function() {
+    var stamp = nativeNow(),
+        remaining = HOT_SPAN - (stamp - lastCalled);
+
+    lastCalled = stamp;
+    if (remaining > 0) {
+      if (++count >= HOT_COUNT) {
+        return arguments[0];
+      }
+    } else {
+      count = 0;
+    }
+    return func.apply(undefined, arguments);
+  };
+}
+
+module.exports = shortOut;
 
 
 /***/ }),
@@ -14506,6 +16399,122 @@ function toSource(func) {
 }
 
 module.exports = toSource;
+
+
+/***/ }),
+
+/***/ 7010:
+/***/ ((module) => {
+
+/** Used to match a single whitespace character. */
+var reWhitespace = /\s/;
+
+/**
+ * Used by `_.trim` and `_.trimEnd` to get the index of the last non-whitespace
+ * character of `string`.
+ *
+ * @private
+ * @param {string} string The string to inspect.
+ * @returns {number} Returns the index of the last non-whitespace character.
+ */
+function trimmedEndIndex(string) {
+  var index = string.length;
+
+  while (index-- && reWhitespace.test(string.charAt(index))) {}
+  return index;
+}
+
+module.exports = trimmedEndIndex;
+
+
+/***/ }),
+
+/***/ 9908:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseSlice = __nccwpck_require__(8758),
+    isIterateeCall = __nccwpck_require__(8494),
+    toInteger = __nccwpck_require__(2722);
+
+/* Built-in method references for those with the same name as other `lodash` methods. */
+var nativeCeil = Math.ceil,
+    nativeMax = Math.max;
+
+/**
+ * Creates an array of elements split into groups the length of `size`.
+ * If `array` can't be split evenly, the final chunk will be the remaining
+ * elements.
+ *
+ * @static
+ * @memberOf _
+ * @since 3.0.0
+ * @category Array
+ * @param {Array} array The array to process.
+ * @param {number} [size=1] The length of each chunk
+ * @param- {Object} [guard] Enables use as an iteratee for methods like `_.map`.
+ * @returns {Array} Returns the new array of chunks.
+ * @example
+ *
+ * _.chunk(['a', 'b', 'c', 'd'], 2);
+ * // => [['a', 'b'], ['c', 'd']]
+ *
+ * _.chunk(['a', 'b', 'c', 'd'], 3);
+ * // => [['a', 'b', 'c'], ['d']]
+ */
+function chunk(array, size, guard) {
+  if ((guard ? isIterateeCall(array, size, guard) : size === undefined)) {
+    size = 1;
+  } else {
+    size = nativeMax(toInteger(size), 0);
+  }
+  var length = array == null ? 0 : array.length;
+  if (!length || size < 1) {
+    return [];
+  }
+  var index = 0,
+      resIndex = 0,
+      result = Array(nativeCeil(length / size));
+
+  while (index < length) {
+    result[resIndex++] = baseSlice(array, index, (index += size));
+  }
+  return result;
+}
+
+module.exports = chunk;
+
+
+/***/ }),
+
+/***/ 5946:
+/***/ ((module) => {
+
+/**
+ * Creates a function that returns `value`.
+ *
+ * @static
+ * @memberOf _
+ * @since 2.4.0
+ * @category Util
+ * @param {*} value The value to return from the new function.
+ * @returns {Function} Returns the new constant function.
+ * @example
+ *
+ * var objects = _.times(2, _.constant({ 'a': 1 }));
+ *
+ * console.log(objects);
+ * // => [{ 'a': 1 }, { 'a': 1 }]
+ *
+ * console.log(objects[0] === objects[1]);
+ * // => true
+ */
+function constant(value) {
+  return function() {
+    return value;
+  };
+}
+
+module.exports = constant;
 
 
 /***/ }),
@@ -14779,6 +16788,46 @@ module.exports = isArrayLike;
 
 /***/ }),
 
+/***/ 7996:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var isArrayLike = __nccwpck_require__(8017),
+    isObjectLike = __nccwpck_require__(5926);
+
+/**
+ * This method is like `_.isArrayLike` except that it also checks if `value`
+ * is an object.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is an array-like object,
+ *  else `false`.
+ * @example
+ *
+ * _.isArrayLikeObject([1, 2, 3]);
+ * // => true
+ *
+ * _.isArrayLikeObject(document.body.children);
+ * // => true
+ *
+ * _.isArrayLikeObject('abc');
+ * // => false
+ *
+ * _.isArrayLikeObject(_.noop);
+ * // => false
+ */
+function isArrayLikeObject(value) {
+  return isObjectLike(value) && isArrayLike(value);
+}
+
+module.exports = isArrayLikeObject;
+
+
+/***/ }),
+
 /***/ 4190:
 /***/ ((module, exports, __nccwpck_require__) => {
 
@@ -14821,6 +16870,48 @@ var nativeIsBuffer = Buffer ? Buffer.isBuffer : undefined;
 var isBuffer = nativeIsBuffer || stubFalse;
 
 module.exports = isBuffer;
+
+
+/***/ }),
+
+/***/ 52:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseIsEqual = __nccwpck_require__(4047);
+
+/**
+ * Performs a deep comparison between two values to determine if they are
+ * equivalent.
+ *
+ * **Note:** This method supports comparing arrays, array buffers, booleans,
+ * date objects, error objects, maps, numbers, `Object` objects, regexes,
+ * sets, strings, symbols, and typed arrays. `Object` objects are compared
+ * by their own, not inherited, enumerable properties. Functions and DOM
+ * nodes are compared by strict equality, i.e. `===`.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Lang
+ * @param {*} value The value to compare.
+ * @param {*} other The other value to compare.
+ * @returns {boolean} Returns `true` if the values are equivalent, else `false`.
+ * @example
+ *
+ * var object = { 'a': 1 };
+ * var other = { 'a': 1 };
+ *
+ * _.isEqual(object, other);
+ * // => true
+ *
+ * object === other;
+ * // => false
+ */
+function isEqual(value, other) {
+  return baseIsEqual(value, other);
+}
+
+module.exports = isEqual;
 
 
 /***/ }),
@@ -15017,6 +17108,75 @@ module.exports = isObjectLike;
 
 /***/ }),
 
+/***/ 6169:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseGetTag = __nccwpck_require__(7497),
+    getPrototype = __nccwpck_require__(6271),
+    isObjectLike = __nccwpck_require__(5926);
+
+/** `Object#toString` result references. */
+var objectTag = '[object Object]';
+
+/** Used for built-in method references. */
+var funcProto = Function.prototype,
+    objectProto = Object.prototype;
+
+/** Used to resolve the decompiled source of functions. */
+var funcToString = funcProto.toString;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/** Used to infer the `Object` constructor. */
+var objectCtorString = funcToString.call(Object);
+
+/**
+ * Checks if `value` is a plain object, that is, an object created by the
+ * `Object` constructor or one with a `[[Prototype]]` of `null`.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.8.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a plain object, else `false`.
+ * @example
+ *
+ * function Foo() {
+ *   this.a = 1;
+ * }
+ *
+ * _.isPlainObject(new Foo);
+ * // => false
+ *
+ * _.isPlainObject([1, 2, 3]);
+ * // => false
+ *
+ * _.isPlainObject({ 'x': 0, 'y': 0 });
+ * // => true
+ *
+ * _.isPlainObject(Object.create(null));
+ * // => true
+ */
+function isPlainObject(value) {
+  if (!isObjectLike(value) || baseGetTag(value) != objectTag) {
+    return false;
+  }
+  var proto = getPrototype(value);
+  if (proto === null) {
+    return true;
+  }
+  var Ctor = hasOwnProperty.call(proto, 'constructor') && proto.constructor;
+  return typeof Ctor == 'function' && Ctor instanceof Ctor &&
+    funcToString.call(Ctor) == objectCtorString;
+}
+
+module.exports = isPlainObject;
+
+
+/***/ }),
+
 /***/ 6403:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -15174,6 +17334,45 @@ module.exports = keys;
 
 /***/ }),
 
+/***/ 9109:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var arrayLikeKeys = __nccwpck_require__(2237),
+    baseKeysIn = __nccwpck_require__(297),
+    isArrayLike = __nccwpck_require__(8017);
+
+/**
+ * Creates an array of the own and inherited enumerable property names of `object`.
+ *
+ * **Note:** Non-object values are coerced to objects.
+ *
+ * @static
+ * @memberOf _
+ * @since 3.0.0
+ * @category Object
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names.
+ * @example
+ *
+ * function Foo() {
+ *   this.a = 1;
+ *   this.b = 2;
+ * }
+ *
+ * Foo.prototype.c = 3;
+ *
+ * _.keysIn(new Foo);
+ * // => ['a', 'b', 'c'] (iteration order is not guaranteed)
+ */
+function keysIn(object) {
+  return isArrayLike(object) ? arrayLikeKeys(object, true) : baseKeysIn(object);
+}
+
+module.exports = keysIn;
+
+
+/***/ }),
+
 /***/ 9885:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -15250,6 +17449,52 @@ function memoize(func, resolver) {
 memoize.Cache = MapCache;
 
 module.exports = memoize;
+
+
+/***/ }),
+
+/***/ 481:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseMerge = __nccwpck_require__(5451),
+    createAssigner = __nccwpck_require__(1911);
+
+/**
+ * This method is like `_.assign` except that it recursively merges own and
+ * inherited enumerable string keyed properties of source objects into the
+ * destination object. Source properties that resolve to `undefined` are
+ * skipped if a destination value exists. Array and plain object properties
+ * are merged recursively. Other objects and value types are overridden by
+ * assignment. Source objects are applied from left to right. Subsequent
+ * sources overwrite property assignments of previous sources.
+ *
+ * **Note:** This method mutates `object`.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.5.0
+ * @category Object
+ * @param {Object} object The destination object.
+ * @param {...Object} [sources] The source objects.
+ * @returns {Object} Returns `object`.
+ * @example
+ *
+ * var object = {
+ *   'a': [{ 'b': 2 }, { 'd': 4 }]
+ * };
+ *
+ * var other = {
+ *   'a': [{ 'c': 3 }, { 'e': 5 }]
+ * };
+ *
+ * _.merge(object, other);
+ * // => { 'a': [{ 'b': 2, 'c': 3 }, { 'd': 4, 'e': 5 }] }
+ */
+var merge = createAssigner(function(object, source, srcIndex) {
+  baseMerge(object, source, srcIndex);
+});
+
+module.exports = merge;
 
 
 /***/ }),
@@ -15344,6 +17589,208 @@ function stubFalse() {
 }
 
 module.exports = stubFalse;
+
+
+/***/ }),
+
+/***/ 9323:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var toNumber = __nccwpck_require__(1235);
+
+/** Used as references for various `Number` constants. */
+var INFINITY = 1 / 0,
+    MAX_INTEGER = 1.7976931348623157e+308;
+
+/**
+ * Converts `value` to a finite number.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.12.0
+ * @category Lang
+ * @param {*} value The value to convert.
+ * @returns {number} Returns the converted number.
+ * @example
+ *
+ * _.toFinite(3.2);
+ * // => 3.2
+ *
+ * _.toFinite(Number.MIN_VALUE);
+ * // => 5e-324
+ *
+ * _.toFinite(Infinity);
+ * // => 1.7976931348623157e+308
+ *
+ * _.toFinite('3.2');
+ * // => 3.2
+ */
+function toFinite(value) {
+  if (!value) {
+    return value === 0 ? value : 0;
+  }
+  value = toNumber(value);
+  if (value === INFINITY || value === -INFINITY) {
+    var sign = (value < 0 ? -1 : 1);
+    return sign * MAX_INTEGER;
+  }
+  return value === value ? value : 0;
+}
+
+module.exports = toFinite;
+
+
+/***/ }),
+
+/***/ 2722:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var toFinite = __nccwpck_require__(9323);
+
+/**
+ * Converts `value` to an integer.
+ *
+ * **Note:** This method is loosely based on
+ * [`ToInteger`](http://www.ecma-international.org/ecma-262/7.0/#sec-tointeger).
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to convert.
+ * @returns {number} Returns the converted integer.
+ * @example
+ *
+ * _.toInteger(3.2);
+ * // => 3
+ *
+ * _.toInteger(Number.MIN_VALUE);
+ * // => 0
+ *
+ * _.toInteger(Infinity);
+ * // => 1.7976931348623157e+308
+ *
+ * _.toInteger('3.2');
+ * // => 3
+ */
+function toInteger(value) {
+  var result = toFinite(value),
+      remainder = result % 1;
+
+  return result === result ? (remainder ? result - remainder : result) : 0;
+}
+
+module.exports = toInteger;
+
+
+/***/ }),
+
+/***/ 1235:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseTrim = __nccwpck_require__(9528),
+    isObject = __nccwpck_require__(3334),
+    isSymbol = __nccwpck_require__(6403);
+
+/** Used as references for various `Number` constants. */
+var NAN = 0 / 0;
+
+/** Used to detect bad signed hexadecimal string values. */
+var reIsBadHex = /^[-+]0x[0-9a-f]+$/i;
+
+/** Used to detect binary string values. */
+var reIsBinary = /^0b[01]+$/i;
+
+/** Used to detect octal string values. */
+var reIsOctal = /^0o[0-7]+$/i;
+
+/** Built-in method references without a dependency on `root`. */
+var freeParseInt = parseInt;
+
+/**
+ * Converts `value` to a number.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to process.
+ * @returns {number} Returns the number.
+ * @example
+ *
+ * _.toNumber(3.2);
+ * // => 3.2
+ *
+ * _.toNumber(Number.MIN_VALUE);
+ * // => 5e-324
+ *
+ * _.toNumber(Infinity);
+ * // => Infinity
+ *
+ * _.toNumber('3.2');
+ * // => 3.2
+ */
+function toNumber(value) {
+  if (typeof value == 'number') {
+    return value;
+  }
+  if (isSymbol(value)) {
+    return NAN;
+  }
+  if (isObject(value)) {
+    var other = typeof value.valueOf == 'function' ? value.valueOf() : value;
+    value = isObject(other) ? (other + '') : other;
+  }
+  if (typeof value != 'string') {
+    return value === 0 ? value : +value;
+  }
+  value = baseTrim(value);
+  var isBinary = reIsBinary.test(value);
+  return (isBinary || reIsOctal.test(value))
+    ? freeParseInt(value.slice(2), isBinary ? 2 : 8)
+    : (reIsBadHex.test(value) ? NAN : +value);
+}
+
+module.exports = toNumber;
+
+
+/***/ }),
+
+/***/ 9321:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var copyObject = __nccwpck_require__(6388),
+    keysIn = __nccwpck_require__(9109);
+
+/**
+ * Converts `value` to a plain object flattening inherited enumerable string
+ * keyed properties of `value` to own properties of the plain object.
+ *
+ * @static
+ * @memberOf _
+ * @since 3.0.0
+ * @category Lang
+ * @param {*} value The value to convert.
+ * @returns {Object} Returns the converted plain object.
+ * @example
+ *
+ * function Foo() {
+ *   this.b = 2;
+ * }
+ *
+ * Foo.prototype.c = 3;
+ *
+ * _.assign({ 'a': 1 }, new Foo);
+ * // => { 'a': 1, 'b': 2 }
+ *
+ * _.assign({ 'a': 1 }, _.toPlainObject(new Foo));
+ * // => { 'a': 1, 'b': 2, 'c': 3 }
+ */
+function toPlainObject(value) {
+  return copyObject(value, keysIn(value));
+}
+
+module.exports = toPlainObject;
 
 
 /***/ }),
@@ -17083,6 +19530,335 @@ exports.Headers = Headers;
 exports.Request = Request;
 exports.Response = Response;
 exports.FetchError = FetchError;
+
+
+/***/ }),
+
+/***/ 3988:
+/***/ ((__unused_webpack_module, exports) => {
+
+var __webpack_unused_export__;
+/* global window, exports, define */
+
+!function() {
+    'use strict'
+
+    var re = {
+        not_string: /[^s]/,
+        not_bool: /[^t]/,
+        not_type: /[^T]/,
+        not_primitive: /[^v]/,
+        number: /[diefg]/,
+        numeric_arg: /[bcdiefguxX]/,
+        json: /[j]/,
+        not_json: /[^j]/,
+        text: /^[^\x25]+/,
+        modulo: /^\x25{2}/,
+        placeholder: /^\x25(?:([1-9]\d*)\$|\(([^)]+)\))?(\+)?(0|'[^$])?(-)?(\d+)?(?:\.(\d+))?([b-gijostTuvxX])/,
+        key: /^([a-z_][a-z_\d]*)/i,
+        key_access: /^\.([a-z_][a-z_\d]*)/i,
+        index_access: /^\[(\d+)\]/,
+        sign: /^[+-]/
+    }
+
+    function sprintf(key) {
+        // `arguments` is not an array, but should be fine for this call
+        return sprintf_format(sprintf_parse(key), arguments)
+    }
+
+    function vsprintf(fmt, argv) {
+        return sprintf.apply(null, [fmt].concat(argv || []))
+    }
+
+    function sprintf_format(parse_tree, argv) {
+        var cursor = 1, tree_length = parse_tree.length, arg, output = '', i, k, ph, pad, pad_character, pad_length, is_positive, sign
+        for (i = 0; i < tree_length; i++) {
+            if (typeof parse_tree[i] === 'string') {
+                output += parse_tree[i]
+            }
+            else if (typeof parse_tree[i] === 'object') {
+                ph = parse_tree[i] // convenience purposes only
+                if (ph.keys) { // keyword argument
+                    arg = argv[cursor]
+                    for (k = 0; k < ph.keys.length; k++) {
+                        if (arg == undefined) {
+                            throw new Error(sprintf('[sprintf] Cannot access property "%s" of undefined value "%s"', ph.keys[k], ph.keys[k-1]))
+                        }
+                        arg = arg[ph.keys[k]]
+                    }
+                }
+                else if (ph.param_no) { // positional argument (explicit)
+                    arg = argv[ph.param_no]
+                }
+                else { // positional argument (implicit)
+                    arg = argv[cursor++]
+                }
+
+                if (re.not_type.test(ph.type) && re.not_primitive.test(ph.type) && arg instanceof Function) {
+                    arg = arg()
+                }
+
+                if (re.numeric_arg.test(ph.type) && (typeof arg !== 'number' && isNaN(arg))) {
+                    throw new TypeError(sprintf('[sprintf] expecting number but found %T', arg))
+                }
+
+                if (re.number.test(ph.type)) {
+                    is_positive = arg >= 0
+                }
+
+                switch (ph.type) {
+                    case 'b':
+                        arg = parseInt(arg, 10).toString(2)
+                        break
+                    case 'c':
+                        arg = String.fromCharCode(parseInt(arg, 10))
+                        break
+                    case 'd':
+                    case 'i':
+                        arg = parseInt(arg, 10)
+                        break
+                    case 'j':
+                        arg = JSON.stringify(arg, null, ph.width ? parseInt(ph.width) : 0)
+                        break
+                    case 'e':
+                        arg = ph.precision ? parseFloat(arg).toExponential(ph.precision) : parseFloat(arg).toExponential()
+                        break
+                    case 'f':
+                        arg = ph.precision ? parseFloat(arg).toFixed(ph.precision) : parseFloat(arg)
+                        break
+                    case 'g':
+                        arg = ph.precision ? String(Number(arg.toPrecision(ph.precision))) : parseFloat(arg)
+                        break
+                    case 'o':
+                        arg = (parseInt(arg, 10) >>> 0).toString(8)
+                        break
+                    case 's':
+                        arg = String(arg)
+                        arg = (ph.precision ? arg.substring(0, ph.precision) : arg)
+                        break
+                    case 't':
+                        arg = String(!!arg)
+                        arg = (ph.precision ? arg.substring(0, ph.precision) : arg)
+                        break
+                    case 'T':
+                        arg = Object.prototype.toString.call(arg).slice(8, -1).toLowerCase()
+                        arg = (ph.precision ? arg.substring(0, ph.precision) : arg)
+                        break
+                    case 'u':
+                        arg = parseInt(arg, 10) >>> 0
+                        break
+                    case 'v':
+                        arg = arg.valueOf()
+                        arg = (ph.precision ? arg.substring(0, ph.precision) : arg)
+                        break
+                    case 'x':
+                        arg = (parseInt(arg, 10) >>> 0).toString(16)
+                        break
+                    case 'X':
+                        arg = (parseInt(arg, 10) >>> 0).toString(16).toUpperCase()
+                        break
+                }
+                if (re.json.test(ph.type)) {
+                    output += arg
+                }
+                else {
+                    if (re.number.test(ph.type) && (!is_positive || ph.sign)) {
+                        sign = is_positive ? '+' : '-'
+                        arg = arg.toString().replace(re.sign, '')
+                    }
+                    else {
+                        sign = ''
+                    }
+                    pad_character = ph.pad_char ? ph.pad_char === '0' ? '0' : ph.pad_char.charAt(1) : ' '
+                    pad_length = ph.width - (sign + arg).length
+                    pad = ph.width ? (pad_length > 0 ? pad_character.repeat(pad_length) : '') : ''
+                    output += ph.align ? sign + arg + pad : (pad_character === '0' ? sign + pad + arg : pad + sign + arg)
+                }
+            }
+        }
+        return output
+    }
+
+    var sprintf_cache = Object.create(null)
+
+    function sprintf_parse(fmt) {
+        if (sprintf_cache[fmt]) {
+            return sprintf_cache[fmt]
+        }
+
+        var _fmt = fmt, match, parse_tree = [], arg_names = 0
+        while (_fmt) {
+            if ((match = re.text.exec(_fmt)) !== null) {
+                parse_tree.push(match[0])
+            }
+            else if ((match = re.modulo.exec(_fmt)) !== null) {
+                parse_tree.push('%')
+            }
+            else if ((match = re.placeholder.exec(_fmt)) !== null) {
+                if (match[2]) {
+                    arg_names |= 1
+                    var field_list = [], replacement_field = match[2], field_match = []
+                    if ((field_match = re.key.exec(replacement_field)) !== null) {
+                        field_list.push(field_match[1])
+                        while ((replacement_field = replacement_field.substring(field_match[0].length)) !== '') {
+                            if ((field_match = re.key_access.exec(replacement_field)) !== null) {
+                                field_list.push(field_match[1])
+                            }
+                            else if ((field_match = re.index_access.exec(replacement_field)) !== null) {
+                                field_list.push(field_match[1])
+                            }
+                            else {
+                                throw new SyntaxError('[sprintf] failed to parse named argument key')
+                            }
+                        }
+                    }
+                    else {
+                        throw new SyntaxError('[sprintf] failed to parse named argument key')
+                    }
+                    match[2] = field_list
+                }
+                else {
+                    arg_names |= 2
+                }
+                if (arg_names === 3) {
+                    throw new Error('[sprintf] mixing positional and named placeholders is not (yet) supported')
+                }
+
+                parse_tree.push(
+                    {
+                        placeholder: match[0],
+                        param_no:    match[1],
+                        keys:        match[2],
+                        sign:        match[3],
+                        pad_char:    match[4],
+                        align:       match[5],
+                        width:       match[6],
+                        precision:   match[7],
+                        type:        match[8]
+                    }
+                )
+            }
+            else {
+                throw new SyntaxError('[sprintf] unexpected placeholder')
+            }
+            _fmt = _fmt.substring(match[0].length)
+        }
+        return sprintf_cache[fmt] = parse_tree
+    }
+
+    /**
+     * export to either browser or node.js
+     */
+    /* eslint-disable quote-props */
+    if (true) {
+        __webpack_unused_export__ = sprintf
+        exports.q = vsprintf
+    }
+    if (typeof window !== 'undefined') {
+        window['sprintf'] = sprintf
+        window['vsprintf'] = vsprintf
+
+        if (typeof define === 'function' && define['amd']) {
+            define(function() {
+                return {
+                    'sprintf': sprintf,
+                    'vsprintf': vsprintf
+                }
+            })
+        }
+    }
+    /* eslint-enable quote-props */
+}(); // eslint-disable-line
+
+
+/***/ }),
+
+/***/ 1343:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const fs = __nccwpck_require__(7147);
+const globrex = __nccwpck_require__(3927);
+const { promisify } = __nccwpck_require__(3837);
+const globalyzer = __nccwpck_require__(3023);
+const { join, resolve, relative } = __nccwpck_require__(1017);
+const isHidden = /(^|[\\\/])\.[^\\\/\.]/g;
+const readdir = promisify(fs.readdir);
+const stat = promisify(fs.stat);
+let CACHE = {};
+
+async function walk(output, prefix, lexer, opts, dirname='', level=0) {
+  const rgx = lexer.segments[level];
+  const dir = resolve(opts.cwd, prefix, dirname);
+  const files = await readdir(dir);
+  const { dot, filesOnly } = opts;
+
+  let i=0, len=files.length, file;
+  let fullpath, relpath, stats, isMatch;
+
+  for (; i < len; i++) {
+    fullpath = join(dir, file=files[i]);
+    relpath = dirname ? join(dirname, file) : file;
+    if (!dot && isHidden.test(relpath)) continue;
+    isMatch = lexer.regex.test(relpath);
+
+    if ((stats=CACHE[relpath]) === void 0) {
+      CACHE[relpath] = stats = fs.lstatSync(fullpath);
+    }
+
+    if (!stats.isDirectory()) {
+      isMatch && output.push(relative(opts.cwd, fullpath));
+      continue;
+    }
+
+    if (rgx && !rgx.test(file)) continue;
+    !filesOnly && isMatch && output.push(join(prefix, relpath));
+
+    await walk(output, prefix, lexer, opts, relpath, rgx && rgx.toString() !== lexer.globstar && level + 1);
+  }
+}
+
+/**
+ * Find files using bash-like globbing.
+ * All paths are normalized compared to node-glob.
+ * @param {String} str Glob string
+ * @param {String} [options.cwd='.'] Current working directory
+ * @param {Boolean} [options.dot=false] Include dotfile matches
+ * @param {Boolean} [options.absolute=false] Return absolute paths
+ * @param {Boolean} [options.filesOnly=false] Do not include folders if true
+ * @param {Boolean} [options.flush=false] Reset cache object
+ * @returns {Array} array containing matching files
+ */
+module.exports = async function (str, opts={}) {
+  if (!str) return [];
+
+  let glob = globalyzer(str);
+
+  opts.cwd = opts.cwd || '.';
+
+  if (!glob.isGlob) {
+    try {
+      let resolved = resolve(opts.cwd, str);
+      let dirent = await stat(resolved);
+      if (opts.filesOnly && !dirent.isFile()) return [];
+
+      return opts.absolute ? [resolved] : [str];
+    } catch (err) {
+      if (err.code != 'ENOENT') throw err;
+
+      return [];
+    }
+  }
+
+  if (opts.flush) CACHE = {};
+
+  let matches = [];
+  const { path } = globrex(glob.glob, { filepath:true, globstar:true, extended:true });
+
+  path.globstar = path.globstar.toString();
+  await walk(matches, glob.base, path, opts, '.', 0);
+
+  return opts.absolute ? matches.map(x => resolve(opts.cwd, x)) : matches;
+};
 
 
 /***/ }),
@@ -21811,6 +24587,6630 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("zlib");
 
 /***/ }),
 
+/***/ 9788:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+
+var PlainValue = __nccwpck_require__(3343);
+var resolveSeq = __nccwpck_require__(2462);
+var Schema = __nccwpck_require__(4044);
+
+const defaultOptions = {
+  anchorPrefix: 'a',
+  customTags: null,
+  indent: 2,
+  indentSeq: true,
+  keepCstNodes: false,
+  keepNodeTypes: true,
+  keepBlobsInJSON: true,
+  mapAsMap: false,
+  maxAliasCount: 100,
+  prettyErrors: false,
+  // TODO Set true in v2
+  simpleKeys: false,
+  version: '1.2'
+};
+const scalarOptions = {
+  get binary() {
+    return resolveSeq.binaryOptions;
+  },
+
+  set binary(opt) {
+    Object.assign(resolveSeq.binaryOptions, opt);
+  },
+
+  get bool() {
+    return resolveSeq.boolOptions;
+  },
+
+  set bool(opt) {
+    Object.assign(resolveSeq.boolOptions, opt);
+  },
+
+  get int() {
+    return resolveSeq.intOptions;
+  },
+
+  set int(opt) {
+    Object.assign(resolveSeq.intOptions, opt);
+  },
+
+  get null() {
+    return resolveSeq.nullOptions;
+  },
+
+  set null(opt) {
+    Object.assign(resolveSeq.nullOptions, opt);
+  },
+
+  get str() {
+    return resolveSeq.strOptions;
+  },
+
+  set str(opt) {
+    Object.assign(resolveSeq.strOptions, opt);
+  }
+
+};
+const documentOptions = {
+  '1.0': {
+    schema: 'yaml-1.1',
+    merge: true,
+    tagPrefixes: [{
+      handle: '!',
+      prefix: PlainValue.defaultTagPrefix
+    }, {
+      handle: '!!',
+      prefix: 'tag:private.yaml.org,2002:'
+    }]
+  },
+  1.1: {
+    schema: 'yaml-1.1',
+    merge: true,
+    tagPrefixes: [{
+      handle: '!',
+      prefix: '!'
+    }, {
+      handle: '!!',
+      prefix: PlainValue.defaultTagPrefix
+    }]
+  },
+  1.2: {
+    schema: 'core',
+    merge: false,
+    tagPrefixes: [{
+      handle: '!',
+      prefix: '!'
+    }, {
+      handle: '!!',
+      prefix: PlainValue.defaultTagPrefix
+    }]
+  }
+};
+
+function stringifyTag(doc, tag) {
+  if ((doc.version || doc.options.version) === '1.0') {
+    const priv = tag.match(/^tag:private\.yaml\.org,2002:([^:/]+)$/);
+    if (priv) return '!' + priv[1];
+    const vocab = tag.match(/^tag:([a-zA-Z0-9-]+)\.yaml\.org,2002:(.*)/);
+    return vocab ? `!${vocab[1]}/${vocab[2]}` : `!${tag.replace(/^tag:/, '')}`;
+  }
+
+  let p = doc.tagPrefixes.find(p => tag.indexOf(p.prefix) === 0);
+
+  if (!p) {
+    const dtp = doc.getDefaults().tagPrefixes;
+    p = dtp && dtp.find(p => tag.indexOf(p.prefix) === 0);
+  }
+
+  if (!p) return tag[0] === '!' ? tag : `!<${tag}>`;
+  const suffix = tag.substr(p.prefix.length).replace(/[!,[\]{}]/g, ch => ({
+    '!': '%21',
+    ',': '%2C',
+    '[': '%5B',
+    ']': '%5D',
+    '{': '%7B',
+    '}': '%7D'
+  })[ch]);
+  return p.handle + suffix;
+}
+
+function getTagObject(tags, item) {
+  if (item instanceof resolveSeq.Alias) return resolveSeq.Alias;
+
+  if (item.tag) {
+    const match = tags.filter(t => t.tag === item.tag);
+    if (match.length > 0) return match.find(t => t.format === item.format) || match[0];
+  }
+
+  let tagObj, obj;
+
+  if (item instanceof resolveSeq.Scalar) {
+    obj = item.value; // TODO: deprecate/remove class check
+
+    const match = tags.filter(t => t.identify && t.identify(obj) || t.class && obj instanceof t.class);
+    tagObj = match.find(t => t.format === item.format) || match.find(t => !t.format);
+  } else {
+    obj = item;
+    tagObj = tags.find(t => t.nodeClass && obj instanceof t.nodeClass);
+  }
+
+  if (!tagObj) {
+    const name = obj && obj.constructor ? obj.constructor.name : typeof obj;
+    throw new Error(`Tag not resolved for ${name} value`);
+  }
+
+  return tagObj;
+} // needs to be called before value stringifier to allow for circular anchor refs
+
+
+function stringifyProps(node, tagObj, {
+  anchors,
+  doc
+}) {
+  const props = [];
+  const anchor = doc.anchors.getName(node);
+
+  if (anchor) {
+    anchors[anchor] = node;
+    props.push(`&${anchor}`);
+  }
+
+  if (node.tag) {
+    props.push(stringifyTag(doc, node.tag));
+  } else if (!tagObj.default) {
+    props.push(stringifyTag(doc, tagObj.tag));
+  }
+
+  return props.join(' ');
+}
+
+function stringify(item, ctx, onComment, onChompKeep) {
+  const {
+    anchors,
+    schema
+  } = ctx.doc;
+  let tagObj;
+
+  if (!(item instanceof resolveSeq.Node)) {
+    const createCtx = {
+      aliasNodes: [],
+      onTagObj: o => tagObj = o,
+      prevObjects: new Map()
+    };
+    item = schema.createNode(item, true, null, createCtx);
+
+    for (const alias of createCtx.aliasNodes) {
+      alias.source = alias.source.node;
+      let name = anchors.getName(alias.source);
+
+      if (!name) {
+        name = anchors.newName();
+        anchors.map[name] = alias.source;
+      }
+    }
+  }
+
+  if (item instanceof resolveSeq.Pair) return item.toString(ctx, onComment, onChompKeep);
+  if (!tagObj) tagObj = getTagObject(schema.tags, item);
+  const props = stringifyProps(item, tagObj, ctx);
+  if (props.length > 0) ctx.indentAtStart = (ctx.indentAtStart || 0) + props.length + 1;
+  const str = typeof tagObj.stringify === 'function' ? tagObj.stringify(item, ctx, onComment, onChompKeep) : item instanceof resolveSeq.Scalar ? resolveSeq.stringifyString(item, ctx, onComment, onChompKeep) : item.toString(ctx, onComment, onChompKeep);
+  if (!props) return str;
+  return item instanceof resolveSeq.Scalar || str[0] === '{' || str[0] === '[' ? `${props} ${str}` : `${props}\n${ctx.indent}${str}`;
+}
+
+class Anchors {
+  static validAnchorNode(node) {
+    return node instanceof resolveSeq.Scalar || node instanceof resolveSeq.YAMLSeq || node instanceof resolveSeq.YAMLMap;
+  }
+
+  constructor(prefix) {
+    PlainValue._defineProperty(this, "map", Object.create(null));
+
+    this.prefix = prefix;
+  }
+
+  createAlias(node, name) {
+    this.setAnchor(node, name);
+    return new resolveSeq.Alias(node);
+  }
+
+  createMergePair(...sources) {
+    const merge = new resolveSeq.Merge();
+    merge.value.items = sources.map(s => {
+      if (s instanceof resolveSeq.Alias) {
+        if (s.source instanceof resolveSeq.YAMLMap) return s;
+      } else if (s instanceof resolveSeq.YAMLMap) {
+        return this.createAlias(s);
+      }
+
+      throw new Error('Merge sources must be Map nodes or their Aliases');
+    });
+    return merge;
+  }
+
+  getName(node) {
+    const {
+      map
+    } = this;
+    return Object.keys(map).find(a => map[a] === node);
+  }
+
+  getNames() {
+    return Object.keys(this.map);
+  }
+
+  getNode(name) {
+    return this.map[name];
+  }
+
+  newName(prefix) {
+    if (!prefix) prefix = this.prefix;
+    const names = Object.keys(this.map);
+
+    for (let i = 1; true; ++i) {
+      const name = `${prefix}${i}`;
+      if (!names.includes(name)) return name;
+    }
+  } // During parsing, map & aliases contain CST nodes
+
+
+  resolveNodes() {
+    const {
+      map,
+      _cstAliases
+    } = this;
+    Object.keys(map).forEach(a => {
+      map[a] = map[a].resolved;
+    });
+
+    _cstAliases.forEach(a => {
+      a.source = a.source.resolved;
+    });
+
+    delete this._cstAliases;
+  }
+
+  setAnchor(node, name) {
+    if (node != null && !Anchors.validAnchorNode(node)) {
+      throw new Error('Anchors may only be set for Scalar, Seq and Map nodes');
+    }
+
+    if (name && /[\x00-\x19\s,[\]{}]/.test(name)) {
+      throw new Error('Anchor names must not contain whitespace or control characters');
+    }
+
+    const {
+      map
+    } = this;
+    const prev = node && Object.keys(map).find(a => map[a] === node);
+
+    if (prev) {
+      if (!name) {
+        return prev;
+      } else if (prev !== name) {
+        delete map[prev];
+        map[name] = node;
+      }
+    } else {
+      if (!name) {
+        if (!node) return null;
+        name = this.newName();
+      }
+
+      map[name] = node;
+    }
+
+    return name;
+  }
+
+}
+
+const visit = (node, tags) => {
+  if (node && typeof node === 'object') {
+    const {
+      tag
+    } = node;
+
+    if (node instanceof resolveSeq.Collection) {
+      if (tag) tags[tag] = true;
+      node.items.forEach(n => visit(n, tags));
+    } else if (node instanceof resolveSeq.Pair) {
+      visit(node.key, tags);
+      visit(node.value, tags);
+    } else if (node instanceof resolveSeq.Scalar) {
+      if (tag) tags[tag] = true;
+    }
+  }
+
+  return tags;
+};
+
+const listTagNames = node => Object.keys(visit(node, {}));
+
+function parseContents(doc, contents) {
+  const comments = {
+    before: [],
+    after: []
+  };
+  let body = undefined;
+  let spaceBefore = false;
+
+  for (const node of contents) {
+    if (node.valueRange) {
+      if (body !== undefined) {
+        const msg = 'Document contains trailing content not separated by a ... or --- line';
+        doc.errors.push(new PlainValue.YAMLSyntaxError(node, msg));
+        break;
+      }
+
+      const res = resolveSeq.resolveNode(doc, node);
+
+      if (spaceBefore) {
+        res.spaceBefore = true;
+        spaceBefore = false;
+      }
+
+      body = res;
+    } else if (node.comment !== null) {
+      const cc = body === undefined ? comments.before : comments.after;
+      cc.push(node.comment);
+    } else if (node.type === PlainValue.Type.BLANK_LINE) {
+      spaceBefore = true;
+
+      if (body === undefined && comments.before.length > 0 && !doc.commentBefore) {
+        // space-separated comments at start are parsed as document comments
+        doc.commentBefore = comments.before.join('\n');
+        comments.before = [];
+      }
+    }
+  }
+
+  doc.contents = body || null;
+
+  if (!body) {
+    doc.comment = comments.before.concat(comments.after).join('\n') || null;
+  } else {
+    const cb = comments.before.join('\n');
+
+    if (cb) {
+      const cbNode = body instanceof resolveSeq.Collection && body.items[0] ? body.items[0] : body;
+      cbNode.commentBefore = cbNode.commentBefore ? `${cb}\n${cbNode.commentBefore}` : cb;
+    }
+
+    doc.comment = comments.after.join('\n') || null;
+  }
+}
+
+function resolveTagDirective({
+  tagPrefixes
+}, directive) {
+  const [handle, prefix] = directive.parameters;
+
+  if (!handle || !prefix) {
+    const msg = 'Insufficient parameters given for %TAG directive';
+    throw new PlainValue.YAMLSemanticError(directive, msg);
+  }
+
+  if (tagPrefixes.some(p => p.handle === handle)) {
+    const msg = 'The %TAG directive must only be given at most once per handle in the same document.';
+    throw new PlainValue.YAMLSemanticError(directive, msg);
+  }
+
+  return {
+    handle,
+    prefix
+  };
+}
+
+function resolveYamlDirective(doc, directive) {
+  let [version] = directive.parameters;
+  if (directive.name === 'YAML:1.0') version = '1.0';
+
+  if (!version) {
+    const msg = 'Insufficient parameters given for %YAML directive';
+    throw new PlainValue.YAMLSemanticError(directive, msg);
+  }
+
+  if (!documentOptions[version]) {
+    const v0 = doc.version || doc.options.version;
+    const msg = `Document will be parsed as YAML ${v0} rather than YAML ${version}`;
+    doc.warnings.push(new PlainValue.YAMLWarning(directive, msg));
+  }
+
+  return version;
+}
+
+function parseDirectives(doc, directives, prevDoc) {
+  const directiveComments = [];
+  let hasDirectives = false;
+
+  for (const directive of directives) {
+    const {
+      comment,
+      name
+    } = directive;
+
+    switch (name) {
+      case 'TAG':
+        try {
+          doc.tagPrefixes.push(resolveTagDirective(doc, directive));
+        } catch (error) {
+          doc.errors.push(error);
+        }
+
+        hasDirectives = true;
+        break;
+
+      case 'YAML':
+      case 'YAML:1.0':
+        if (doc.version) {
+          const msg = 'The %YAML directive must only be given at most once per document.';
+          doc.errors.push(new PlainValue.YAMLSemanticError(directive, msg));
+        }
+
+        try {
+          doc.version = resolveYamlDirective(doc, directive);
+        } catch (error) {
+          doc.errors.push(error);
+        }
+
+        hasDirectives = true;
+        break;
+
+      default:
+        if (name) {
+          const msg = `YAML only supports %TAG and %YAML directives, and not %${name}`;
+          doc.warnings.push(new PlainValue.YAMLWarning(directive, msg));
+        }
+
+    }
+
+    if (comment) directiveComments.push(comment);
+  }
+
+  if (prevDoc && !hasDirectives && '1.1' === (doc.version || prevDoc.version || doc.options.version)) {
+    const copyTagPrefix = ({
+      handle,
+      prefix
+    }) => ({
+      handle,
+      prefix
+    });
+
+    doc.tagPrefixes = prevDoc.tagPrefixes.map(copyTagPrefix);
+    doc.version = prevDoc.version;
+  }
+
+  doc.commentBefore = directiveComments.join('\n') || null;
+}
+
+function assertCollection(contents) {
+  if (contents instanceof resolveSeq.Collection) return true;
+  throw new Error('Expected a YAML collection as document contents');
+}
+
+class Document {
+  constructor(options) {
+    this.anchors = new Anchors(options.anchorPrefix);
+    this.commentBefore = null;
+    this.comment = null;
+    this.contents = null;
+    this.directivesEndMarker = null;
+    this.errors = [];
+    this.options = options;
+    this.schema = null;
+    this.tagPrefixes = [];
+    this.version = null;
+    this.warnings = [];
+  }
+
+  add(value) {
+    assertCollection(this.contents);
+    return this.contents.add(value);
+  }
+
+  addIn(path, value) {
+    assertCollection(this.contents);
+    this.contents.addIn(path, value);
+  }
+
+  delete(key) {
+    assertCollection(this.contents);
+    return this.contents.delete(key);
+  }
+
+  deleteIn(path) {
+    if (resolveSeq.isEmptyPath(path)) {
+      if (this.contents == null) return false;
+      this.contents = null;
+      return true;
+    }
+
+    assertCollection(this.contents);
+    return this.contents.deleteIn(path);
+  }
+
+  getDefaults() {
+    return Document.defaults[this.version] || Document.defaults[this.options.version] || {};
+  }
+
+  get(key, keepScalar) {
+    return this.contents instanceof resolveSeq.Collection ? this.contents.get(key, keepScalar) : undefined;
+  }
+
+  getIn(path, keepScalar) {
+    if (resolveSeq.isEmptyPath(path)) return !keepScalar && this.contents instanceof resolveSeq.Scalar ? this.contents.value : this.contents;
+    return this.contents instanceof resolveSeq.Collection ? this.contents.getIn(path, keepScalar) : undefined;
+  }
+
+  has(key) {
+    return this.contents instanceof resolveSeq.Collection ? this.contents.has(key) : false;
+  }
+
+  hasIn(path) {
+    if (resolveSeq.isEmptyPath(path)) return this.contents !== undefined;
+    return this.contents instanceof resolveSeq.Collection ? this.contents.hasIn(path) : false;
+  }
+
+  set(key, value) {
+    assertCollection(this.contents);
+    this.contents.set(key, value);
+  }
+
+  setIn(path, value) {
+    if (resolveSeq.isEmptyPath(path)) this.contents = value;else {
+      assertCollection(this.contents);
+      this.contents.setIn(path, value);
+    }
+  }
+
+  setSchema(id, customTags) {
+    if (!id && !customTags && this.schema) return;
+    if (typeof id === 'number') id = id.toFixed(1);
+
+    if (id === '1.0' || id === '1.1' || id === '1.2') {
+      if (this.version) this.version = id;else this.options.version = id;
+      delete this.options.schema;
+    } else if (id && typeof id === 'string') {
+      this.options.schema = id;
+    }
+
+    if (Array.isArray(customTags)) this.options.customTags = customTags;
+    const opt = Object.assign({}, this.getDefaults(), this.options);
+    this.schema = new Schema.Schema(opt);
+  }
+
+  parse(node, prevDoc) {
+    if (this.options.keepCstNodes) this.cstNode = node;
+    if (this.options.keepNodeTypes) this.type = 'DOCUMENT';
+    const {
+      directives = [],
+      contents = [],
+      directivesEndMarker,
+      error,
+      valueRange
+    } = node;
+
+    if (error) {
+      if (!error.source) error.source = this;
+      this.errors.push(error);
+    }
+
+    parseDirectives(this, directives, prevDoc);
+    if (directivesEndMarker) this.directivesEndMarker = true;
+    this.range = valueRange ? [valueRange.start, valueRange.end] : null;
+    this.setSchema();
+    this.anchors._cstAliases = [];
+    parseContents(this, contents);
+    this.anchors.resolveNodes();
+
+    if (this.options.prettyErrors) {
+      for (const error of this.errors) if (error instanceof PlainValue.YAMLError) error.makePretty();
+
+      for (const warn of this.warnings) if (warn instanceof PlainValue.YAMLError) warn.makePretty();
+    }
+
+    return this;
+  }
+
+  listNonDefaultTags() {
+    return listTagNames(this.contents).filter(t => t.indexOf(Schema.Schema.defaultPrefix) !== 0);
+  }
+
+  setTagPrefix(handle, prefix) {
+    if (handle[0] !== '!' || handle[handle.length - 1] !== '!') throw new Error('Handle must start and end with !');
+
+    if (prefix) {
+      const prev = this.tagPrefixes.find(p => p.handle === handle);
+      if (prev) prev.prefix = prefix;else this.tagPrefixes.push({
+        handle,
+        prefix
+      });
+    } else {
+      this.tagPrefixes = this.tagPrefixes.filter(p => p.handle !== handle);
+    }
+  }
+
+  toJSON(arg, onAnchor) {
+    const {
+      keepBlobsInJSON,
+      mapAsMap,
+      maxAliasCount
+    } = this.options;
+    const keep = keepBlobsInJSON && (typeof arg !== 'string' || !(this.contents instanceof resolveSeq.Scalar));
+    const ctx = {
+      doc: this,
+      indentStep: '  ',
+      keep,
+      mapAsMap: keep && !!mapAsMap,
+      maxAliasCount,
+      stringify // Requiring directly in Pair would create circular dependencies
+
+    };
+    const anchorNames = Object.keys(this.anchors.map);
+    if (anchorNames.length > 0) ctx.anchors = new Map(anchorNames.map(name => [this.anchors.map[name], {
+      alias: [],
+      aliasCount: 0,
+      count: 1
+    }]));
+    const res = resolveSeq.toJSON(this.contents, arg, ctx);
+    if (typeof onAnchor === 'function' && ctx.anchors) for (const {
+      count,
+      res
+    } of ctx.anchors.values()) onAnchor(res, count);
+    return res;
+  }
+
+  toString() {
+    if (this.errors.length > 0) throw new Error('Document with errors cannot be stringified');
+    const indentSize = this.options.indent;
+
+    if (!Number.isInteger(indentSize) || indentSize <= 0) {
+      const s = JSON.stringify(indentSize);
+      throw new Error(`"indent" option must be a positive integer, not ${s}`);
+    }
+
+    this.setSchema();
+    const lines = [];
+    let hasDirectives = false;
+
+    if (this.version) {
+      let vd = '%YAML 1.2';
+
+      if (this.schema.name === 'yaml-1.1') {
+        if (this.version === '1.0') vd = '%YAML:1.0';else if (this.version === '1.1') vd = '%YAML 1.1';
+      }
+
+      lines.push(vd);
+      hasDirectives = true;
+    }
+
+    const tagNames = this.listNonDefaultTags();
+    this.tagPrefixes.forEach(({
+      handle,
+      prefix
+    }) => {
+      if (tagNames.some(t => t.indexOf(prefix) === 0)) {
+        lines.push(`%TAG ${handle} ${prefix}`);
+        hasDirectives = true;
+      }
+    });
+    if (hasDirectives || this.directivesEndMarker) lines.push('---');
+
+    if (this.commentBefore) {
+      if (hasDirectives || !this.directivesEndMarker) lines.unshift('');
+      lines.unshift(this.commentBefore.replace(/^/gm, '#'));
+    }
+
+    const ctx = {
+      anchors: Object.create(null),
+      doc: this,
+      indent: '',
+      indentStep: ' '.repeat(indentSize),
+      stringify // Requiring directly in nodes would create circular dependencies
+
+    };
+    let chompKeep = false;
+    let contentComment = null;
+
+    if (this.contents) {
+      if (this.contents instanceof resolveSeq.Node) {
+        if (this.contents.spaceBefore && (hasDirectives || this.directivesEndMarker)) lines.push('');
+        if (this.contents.commentBefore) lines.push(this.contents.commentBefore.replace(/^/gm, '#')); // top-level block scalars need to be indented if followed by a comment
+
+        ctx.forceBlockIndent = !!this.comment;
+        contentComment = this.contents.comment;
+      }
+
+      const onChompKeep = contentComment ? null : () => chompKeep = true;
+      const body = stringify(this.contents, ctx, () => contentComment = null, onChompKeep);
+      lines.push(resolveSeq.addComment(body, '', contentComment));
+    } else if (this.contents !== undefined) {
+      lines.push(stringify(this.contents, ctx));
+    }
+
+    if (this.comment) {
+      if ((!chompKeep || contentComment) && lines[lines.length - 1] !== '') lines.push('');
+      lines.push(this.comment.replace(/^/gm, '#'));
+    }
+
+    return lines.join('\n') + '\n';
+  }
+
+}
+
+PlainValue._defineProperty(Document, "defaults", documentOptions);
+
+exports.Document = Document;
+exports.defaultOptions = defaultOptions;
+exports.scalarOptions = scalarOptions;
+
+
+/***/ }),
+
+/***/ 3343:
+/***/ ((__unused_webpack_module, exports) => {
+
+
+
+const Char = {
+  ANCHOR: '&',
+  COMMENT: '#',
+  TAG: '!',
+  DIRECTIVES_END: '-',
+  DOCUMENT_END: '.'
+};
+const Type = {
+  ALIAS: 'ALIAS',
+  BLANK_LINE: 'BLANK_LINE',
+  BLOCK_FOLDED: 'BLOCK_FOLDED',
+  BLOCK_LITERAL: 'BLOCK_LITERAL',
+  COMMENT: 'COMMENT',
+  DIRECTIVE: 'DIRECTIVE',
+  DOCUMENT: 'DOCUMENT',
+  FLOW_MAP: 'FLOW_MAP',
+  FLOW_SEQ: 'FLOW_SEQ',
+  MAP: 'MAP',
+  MAP_KEY: 'MAP_KEY',
+  MAP_VALUE: 'MAP_VALUE',
+  PLAIN: 'PLAIN',
+  QUOTE_DOUBLE: 'QUOTE_DOUBLE',
+  QUOTE_SINGLE: 'QUOTE_SINGLE',
+  SEQ: 'SEQ',
+  SEQ_ITEM: 'SEQ_ITEM'
+};
+const defaultTagPrefix = 'tag:yaml.org,2002:';
+const defaultTags = {
+  MAP: 'tag:yaml.org,2002:map',
+  SEQ: 'tag:yaml.org,2002:seq',
+  STR: 'tag:yaml.org,2002:str'
+};
+
+function findLineStarts(src) {
+  const ls = [0];
+  let offset = src.indexOf('\n');
+
+  while (offset !== -1) {
+    offset += 1;
+    ls.push(offset);
+    offset = src.indexOf('\n', offset);
+  }
+
+  return ls;
+}
+
+function getSrcInfo(cst) {
+  let lineStarts, src;
+
+  if (typeof cst === 'string') {
+    lineStarts = findLineStarts(cst);
+    src = cst;
+  } else {
+    if (Array.isArray(cst)) cst = cst[0];
+
+    if (cst && cst.context) {
+      if (!cst.lineStarts) cst.lineStarts = findLineStarts(cst.context.src);
+      lineStarts = cst.lineStarts;
+      src = cst.context.src;
+    }
+  }
+
+  return {
+    lineStarts,
+    src
+  };
+}
+/**
+ * @typedef {Object} LinePos - One-indexed position in the source
+ * @property {number} line
+ * @property {number} col
+ */
+
+/**
+ * Determine the line/col position matching a character offset.
+ *
+ * Accepts a source string or a CST document as the second parameter. With
+ * the latter, starting indices for lines are cached in the document as
+ * `lineStarts: number[]`.
+ *
+ * Returns a one-indexed `{ line, col }` location if found, or
+ * `undefined` otherwise.
+ *
+ * @param {number} offset
+ * @param {string|Document|Document[]} cst
+ * @returns {?LinePos}
+ */
+
+
+function getLinePos(offset, cst) {
+  if (typeof offset !== 'number' || offset < 0) return null;
+  const {
+    lineStarts,
+    src
+  } = getSrcInfo(cst);
+  if (!lineStarts || !src || offset > src.length) return null;
+
+  for (let i = 0; i < lineStarts.length; ++i) {
+    const start = lineStarts[i];
+
+    if (offset < start) {
+      return {
+        line: i,
+        col: offset - lineStarts[i - 1] + 1
+      };
+    }
+
+    if (offset === start) return {
+      line: i + 1,
+      col: 1
+    };
+  }
+
+  const line = lineStarts.length;
+  return {
+    line,
+    col: offset - lineStarts[line - 1] + 1
+  };
+}
+/**
+ * Get a specified line from the source.
+ *
+ * Accepts a source string or a CST document as the second parameter. With
+ * the latter, starting indices for lines are cached in the document as
+ * `lineStarts: number[]`.
+ *
+ * Returns the line as a string if found, or `null` otherwise.
+ *
+ * @param {number} line One-indexed line number
+ * @param {string|Document|Document[]} cst
+ * @returns {?string}
+ */
+
+function getLine(line, cst) {
+  const {
+    lineStarts,
+    src
+  } = getSrcInfo(cst);
+  if (!lineStarts || !(line >= 1) || line > lineStarts.length) return null;
+  const start = lineStarts[line - 1];
+  let end = lineStarts[line]; // undefined for last line; that's ok for slice()
+
+  while (end && end > start && src[end - 1] === '\n') --end;
+
+  return src.slice(start, end);
+}
+/**
+ * Pretty-print the starting line from the source indicated by the range `pos`
+ *
+ * Trims output to `maxWidth` chars while keeping the starting column visible,
+ * using `…` at either end to indicate dropped characters.
+ *
+ * Returns a two-line string (or `null`) with `\n` as separator; the second line
+ * will hold appropriately indented `^` marks indicating the column range.
+ *
+ * @param {Object} pos
+ * @param {LinePos} pos.start
+ * @param {LinePos} [pos.end]
+ * @param {string|Document|Document[]*} cst
+ * @param {number} [maxWidth=80]
+ * @returns {?string}
+ */
+
+function getPrettyContext({
+  start,
+  end
+}, cst, maxWidth = 80) {
+  let src = getLine(start.line, cst);
+  if (!src) return null;
+  let {
+    col
+  } = start;
+
+  if (src.length > maxWidth) {
+    if (col <= maxWidth - 10) {
+      src = src.substr(0, maxWidth - 1) + '…';
+    } else {
+      const halfWidth = Math.round(maxWidth / 2);
+      if (src.length > col + halfWidth) src = src.substr(0, col + halfWidth - 1) + '…';
+      col -= src.length - maxWidth;
+      src = '…' + src.substr(1 - maxWidth);
+    }
+  }
+
+  let errLen = 1;
+  let errEnd = '';
+
+  if (end) {
+    if (end.line === start.line && col + (end.col - start.col) <= maxWidth + 1) {
+      errLen = end.col - start.col;
+    } else {
+      errLen = Math.min(src.length + 1, maxWidth) - col;
+      errEnd = '…';
+    }
+  }
+
+  const offset = col > 1 ? ' '.repeat(col - 1) : '';
+  const err = '^'.repeat(errLen);
+  return `${src}\n${offset}${err}${errEnd}`;
+}
+
+class Range {
+  static copy(orig) {
+    return new Range(orig.start, orig.end);
+  }
+
+  constructor(start, end) {
+    this.start = start;
+    this.end = end || start;
+  }
+
+  isEmpty() {
+    return typeof this.start !== 'number' || !this.end || this.end <= this.start;
+  }
+  /**
+   * Set `origStart` and `origEnd` to point to the original source range for
+   * this node, which may differ due to dropped CR characters.
+   *
+   * @param {number[]} cr - Positions of dropped CR characters
+   * @param {number} offset - Starting index of `cr` from the last call
+   * @returns {number} - The next offset, matching the one found for `origStart`
+   */
+
+
+  setOrigRange(cr, offset) {
+    const {
+      start,
+      end
+    } = this;
+
+    if (cr.length === 0 || end <= cr[0]) {
+      this.origStart = start;
+      this.origEnd = end;
+      return offset;
+    }
+
+    let i = offset;
+
+    while (i < cr.length) {
+      if (cr[i] > start) break;else ++i;
+    }
+
+    this.origStart = start + i;
+    const nextOffset = i;
+
+    while (i < cr.length) {
+      // if end was at \n, it should now be at \r
+      if (cr[i] >= end) break;else ++i;
+    }
+
+    this.origEnd = end + i;
+    return nextOffset;
+  }
+
+}
+
+/** Root class of all nodes */
+
+class Node {
+  static addStringTerminator(src, offset, str) {
+    if (str[str.length - 1] === '\n') return str;
+    const next = Node.endOfWhiteSpace(src, offset);
+    return next >= src.length || src[next] === '\n' ? str + '\n' : str;
+  } // ^(---|...)
+
+
+  static atDocumentBoundary(src, offset, sep) {
+    const ch0 = src[offset];
+    if (!ch0) return true;
+    const prev = src[offset - 1];
+    if (prev && prev !== '\n') return false;
+
+    if (sep) {
+      if (ch0 !== sep) return false;
+    } else {
+      if (ch0 !== Char.DIRECTIVES_END && ch0 !== Char.DOCUMENT_END) return false;
+    }
+
+    const ch1 = src[offset + 1];
+    const ch2 = src[offset + 2];
+    if (ch1 !== ch0 || ch2 !== ch0) return false;
+    const ch3 = src[offset + 3];
+    return !ch3 || ch3 === '\n' || ch3 === '\t' || ch3 === ' ';
+  }
+
+  static endOfIdentifier(src, offset) {
+    let ch = src[offset];
+    const isVerbatim = ch === '<';
+    const notOk = isVerbatim ? ['\n', '\t', ' ', '>'] : ['\n', '\t', ' ', '[', ']', '{', '}', ','];
+
+    while (ch && notOk.indexOf(ch) === -1) ch = src[offset += 1];
+
+    if (isVerbatim && ch === '>') offset += 1;
+    return offset;
+  }
+
+  static endOfIndent(src, offset) {
+    let ch = src[offset];
+
+    while (ch === ' ') ch = src[offset += 1];
+
+    return offset;
+  }
+
+  static endOfLine(src, offset) {
+    let ch = src[offset];
+
+    while (ch && ch !== '\n') ch = src[offset += 1];
+
+    return offset;
+  }
+
+  static endOfWhiteSpace(src, offset) {
+    let ch = src[offset];
+
+    while (ch === '\t' || ch === ' ') ch = src[offset += 1];
+
+    return offset;
+  }
+
+  static startOfLine(src, offset) {
+    let ch = src[offset - 1];
+    if (ch === '\n') return offset;
+
+    while (ch && ch !== '\n') ch = src[offset -= 1];
+
+    return offset + 1;
+  }
+  /**
+   * End of indentation, or null if the line's indent level is not more
+   * than `indent`
+   *
+   * @param {string} src
+   * @param {number} indent
+   * @param {number} lineStart
+   * @returns {?number}
+   */
+
+
+  static endOfBlockIndent(src, indent, lineStart) {
+    const inEnd = Node.endOfIndent(src, lineStart);
+
+    if (inEnd > lineStart + indent) {
+      return inEnd;
+    } else {
+      const wsEnd = Node.endOfWhiteSpace(src, inEnd);
+      const ch = src[wsEnd];
+      if (!ch || ch === '\n') return wsEnd;
+    }
+
+    return null;
+  }
+
+  static atBlank(src, offset, endAsBlank) {
+    const ch = src[offset];
+    return ch === '\n' || ch === '\t' || ch === ' ' || endAsBlank && !ch;
+  }
+
+  static nextNodeIsIndented(ch, indentDiff, indicatorAsIndent) {
+    if (!ch || indentDiff < 0) return false;
+    if (indentDiff > 0) return true;
+    return indicatorAsIndent && ch === '-';
+  } // should be at line or string end, or at next non-whitespace char
+
+
+  static normalizeOffset(src, offset) {
+    const ch = src[offset];
+    return !ch ? offset : ch !== '\n' && src[offset - 1] === '\n' ? offset - 1 : Node.endOfWhiteSpace(src, offset);
+  } // fold single newline into space, multiple newlines to N - 1 newlines
+  // presumes src[offset] === '\n'
+
+
+  static foldNewline(src, offset, indent) {
+    let inCount = 0;
+    let error = false;
+    let fold = '';
+    let ch = src[offset + 1];
+
+    while (ch === ' ' || ch === '\t' || ch === '\n') {
+      switch (ch) {
+        case '\n':
+          inCount = 0;
+          offset += 1;
+          fold += '\n';
+          break;
+
+        case '\t':
+          if (inCount <= indent) error = true;
+          offset = Node.endOfWhiteSpace(src, offset + 2) - 1;
+          break;
+
+        case ' ':
+          inCount += 1;
+          offset += 1;
+          break;
+      }
+
+      ch = src[offset + 1];
+    }
+
+    if (!fold) fold = ' ';
+    if (ch && inCount <= indent) error = true;
+    return {
+      fold,
+      offset,
+      error
+    };
+  }
+
+  constructor(type, props, context) {
+    Object.defineProperty(this, 'context', {
+      value: context || null,
+      writable: true
+    });
+    this.error = null;
+    this.range = null;
+    this.valueRange = null;
+    this.props = props || [];
+    this.type = type;
+    this.value = null;
+  }
+
+  getPropValue(idx, key, skipKey) {
+    if (!this.context) return null;
+    const {
+      src
+    } = this.context;
+    const prop = this.props[idx];
+    return prop && src[prop.start] === key ? src.slice(prop.start + (skipKey ? 1 : 0), prop.end) : null;
+  }
+
+  get anchor() {
+    for (let i = 0; i < this.props.length; ++i) {
+      const anchor = this.getPropValue(i, Char.ANCHOR, true);
+      if (anchor != null) return anchor;
+    }
+
+    return null;
+  }
+
+  get comment() {
+    const comments = [];
+
+    for (let i = 0; i < this.props.length; ++i) {
+      const comment = this.getPropValue(i, Char.COMMENT, true);
+      if (comment != null) comments.push(comment);
+    }
+
+    return comments.length > 0 ? comments.join('\n') : null;
+  }
+
+  commentHasRequiredWhitespace(start) {
+    const {
+      src
+    } = this.context;
+    if (this.header && start === this.header.end) return false;
+    if (!this.valueRange) return false;
+    const {
+      end
+    } = this.valueRange;
+    return start !== end || Node.atBlank(src, end - 1);
+  }
+
+  get hasComment() {
+    if (this.context) {
+      const {
+        src
+      } = this.context;
+
+      for (let i = 0; i < this.props.length; ++i) {
+        if (src[this.props[i].start] === Char.COMMENT) return true;
+      }
+    }
+
+    return false;
+  }
+
+  get hasProps() {
+    if (this.context) {
+      const {
+        src
+      } = this.context;
+
+      for (let i = 0; i < this.props.length; ++i) {
+        if (src[this.props[i].start] !== Char.COMMENT) return true;
+      }
+    }
+
+    return false;
+  }
+
+  get includesTrailingLines() {
+    return false;
+  }
+
+  get jsonLike() {
+    const jsonLikeTypes = [Type.FLOW_MAP, Type.FLOW_SEQ, Type.QUOTE_DOUBLE, Type.QUOTE_SINGLE];
+    return jsonLikeTypes.indexOf(this.type) !== -1;
+  }
+
+  get rangeAsLinePos() {
+    if (!this.range || !this.context) return undefined;
+    const start = getLinePos(this.range.start, this.context.root);
+    if (!start) return undefined;
+    const end = getLinePos(this.range.end, this.context.root);
+    return {
+      start,
+      end
+    };
+  }
+
+  get rawValue() {
+    if (!this.valueRange || !this.context) return null;
+    const {
+      start,
+      end
+    } = this.valueRange;
+    return this.context.src.slice(start, end);
+  }
+
+  get tag() {
+    for (let i = 0; i < this.props.length; ++i) {
+      const tag = this.getPropValue(i, Char.TAG, false);
+
+      if (tag != null) {
+        if (tag[1] === '<') {
+          return {
+            verbatim: tag.slice(2, -1)
+          };
+        } else {
+          // eslint-disable-next-line no-unused-vars
+          const [_, handle, suffix] = tag.match(/^(.*!)([^!]*)$/);
+          return {
+            handle,
+            suffix
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  get valueRangeContainsNewline() {
+    if (!this.valueRange || !this.context) return false;
+    const {
+      start,
+      end
+    } = this.valueRange;
+    const {
+      src
+    } = this.context;
+
+    for (let i = start; i < end; ++i) {
+      if (src[i] === '\n') return true;
+    }
+
+    return false;
+  }
+
+  parseComment(start) {
+    const {
+      src
+    } = this.context;
+
+    if (src[start] === Char.COMMENT) {
+      const end = Node.endOfLine(src, start + 1);
+      const commentRange = new Range(start, end);
+      this.props.push(commentRange);
+      return end;
+    }
+
+    return start;
+  }
+  /**
+   * Populates the `origStart` and `origEnd` values of all ranges for this
+   * node. Extended by child classes to handle descendant nodes.
+   *
+   * @param {number[]} cr - Positions of dropped CR characters
+   * @param {number} offset - Starting index of `cr` from the last call
+   * @returns {number} - The next offset, matching the one found for `origStart`
+   */
+
+
+  setOrigRanges(cr, offset) {
+    if (this.range) offset = this.range.setOrigRange(cr, offset);
+    if (this.valueRange) this.valueRange.setOrigRange(cr, offset);
+    this.props.forEach(prop => prop.setOrigRange(cr, offset));
+    return offset;
+  }
+
+  toString() {
+    const {
+      context: {
+        src
+      },
+      range,
+      value
+    } = this;
+    if (value != null) return value;
+    const str = src.slice(range.start, range.end);
+    return Node.addStringTerminator(src, range.end, str);
+  }
+
+}
+
+class YAMLError extends Error {
+  constructor(name, source, message) {
+    if (!message || !(source instanceof Node)) throw new Error(`Invalid arguments for new ${name}`);
+    super();
+    this.name = name;
+    this.message = message;
+    this.source = source;
+  }
+
+  makePretty() {
+    if (!this.source) return;
+    this.nodeType = this.source.type;
+    const cst = this.source.context && this.source.context.root;
+
+    if (typeof this.offset === 'number') {
+      this.range = new Range(this.offset, this.offset + 1);
+      const start = cst && getLinePos(this.offset, cst);
+
+      if (start) {
+        const end = {
+          line: start.line,
+          col: start.col + 1
+        };
+        this.linePos = {
+          start,
+          end
+        };
+      }
+
+      delete this.offset;
+    } else {
+      this.range = this.source.range;
+      this.linePos = this.source.rangeAsLinePos;
+    }
+
+    if (this.linePos) {
+      const {
+        line,
+        col
+      } = this.linePos.start;
+      this.message += ` at line ${line}, column ${col}`;
+      const ctx = cst && getPrettyContext(this.linePos, cst);
+      if (ctx) this.message += `:\n\n${ctx}\n`;
+    }
+
+    delete this.source;
+  }
+
+}
+class YAMLReferenceError extends YAMLError {
+  constructor(source, message) {
+    super('YAMLReferenceError', source, message);
+  }
+
+}
+class YAMLSemanticError extends YAMLError {
+  constructor(source, message) {
+    super('YAMLSemanticError', source, message);
+  }
+
+}
+class YAMLSyntaxError extends YAMLError {
+  constructor(source, message) {
+    super('YAMLSyntaxError', source, message);
+  }
+
+}
+class YAMLWarning extends YAMLError {
+  constructor(source, message) {
+    super('YAMLWarning', source, message);
+  }
+
+}
+
+function _defineProperty(obj, key, value) {
+  if (key in obj) {
+    Object.defineProperty(obj, key, {
+      value: value,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
+  } else {
+    obj[key] = value;
+  }
+
+  return obj;
+}
+
+class PlainValue extends Node {
+  static endOfLine(src, start, inFlow) {
+    let ch = src[start];
+    let offset = start;
+
+    while (ch && ch !== '\n') {
+      if (inFlow && (ch === '[' || ch === ']' || ch === '{' || ch === '}' || ch === ',')) break;
+      const next = src[offset + 1];
+      if (ch === ':' && (!next || next === '\n' || next === '\t' || next === ' ' || inFlow && next === ',')) break;
+      if ((ch === ' ' || ch === '\t') && next === '#') break;
+      offset += 1;
+      ch = next;
+    }
+
+    return offset;
+  }
+
+  get strValue() {
+    if (!this.valueRange || !this.context) return null;
+    let {
+      start,
+      end
+    } = this.valueRange;
+    const {
+      src
+    } = this.context;
+    let ch = src[end - 1];
+
+    while (start < end && (ch === '\n' || ch === '\t' || ch === ' ')) ch = src[--end - 1];
+
+    let str = '';
+
+    for (let i = start; i < end; ++i) {
+      const ch = src[i];
+
+      if (ch === '\n') {
+        const {
+          fold,
+          offset
+        } = Node.foldNewline(src, i, -1);
+        str += fold;
+        i = offset;
+      } else if (ch === ' ' || ch === '\t') {
+        // trim trailing whitespace
+        const wsStart = i;
+        let next = src[i + 1];
+
+        while (i < end && (next === ' ' || next === '\t')) {
+          i += 1;
+          next = src[i + 1];
+        }
+
+        if (next !== '\n') str += i > wsStart ? src.slice(wsStart, i + 1) : ch;
+      } else {
+        str += ch;
+      }
+    }
+
+    const ch0 = src[start];
+
+    switch (ch0) {
+      case '\t':
+        {
+          const msg = 'Plain value cannot start with a tab character';
+          const errors = [new YAMLSemanticError(this, msg)];
+          return {
+            errors,
+            str
+          };
+        }
+
+      case '@':
+      case '`':
+        {
+          const msg = `Plain value cannot start with reserved character ${ch0}`;
+          const errors = [new YAMLSemanticError(this, msg)];
+          return {
+            errors,
+            str
+          };
+        }
+
+      default:
+        return str;
+    }
+  }
+
+  parseBlockValue(start) {
+    const {
+      indent,
+      inFlow,
+      src
+    } = this.context;
+    let offset = start;
+    let valueEnd = start;
+
+    for (let ch = src[offset]; ch === '\n'; ch = src[offset]) {
+      if (Node.atDocumentBoundary(src, offset + 1)) break;
+      const end = Node.endOfBlockIndent(src, indent, offset + 1);
+      if (end === null || src[end] === '#') break;
+
+      if (src[end] === '\n') {
+        offset = end;
+      } else {
+        valueEnd = PlainValue.endOfLine(src, end, inFlow);
+        offset = valueEnd;
+      }
+    }
+
+    if (this.valueRange.isEmpty()) this.valueRange.start = start;
+    this.valueRange.end = valueEnd;
+    return valueEnd;
+  }
+  /**
+   * Parses a plain value from the source
+   *
+   * Accepted forms are:
+   * ```
+   * #comment
+   *
+   * first line
+   *
+   * first line #comment
+   *
+   * first line
+   * block
+   * lines
+   *
+   * #comment
+   * block
+   * lines
+   * ```
+   * where block lines are empty or have an indent level greater than `indent`.
+   *
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this scalar, may be `\n`
+   */
+
+
+  parse(context, start) {
+    this.context = context;
+    const {
+      inFlow,
+      src
+    } = context;
+    let offset = start;
+    const ch = src[offset];
+
+    if (ch && ch !== '#' && ch !== '\n') {
+      offset = PlainValue.endOfLine(src, start, inFlow);
+    }
+
+    this.valueRange = new Range(start, offset);
+    offset = Node.endOfWhiteSpace(src, offset);
+    offset = this.parseComment(offset);
+
+    if (!this.hasComment || this.valueRange.isEmpty()) {
+      offset = this.parseBlockValue(offset);
+    }
+
+    return offset;
+  }
+
+}
+
+exports.Char = Char;
+exports.Node = Node;
+exports.PlainValue = PlainValue;
+exports.Range = Range;
+exports.Type = Type;
+exports.YAMLError = YAMLError;
+exports.YAMLReferenceError = YAMLReferenceError;
+exports.YAMLSemanticError = YAMLSemanticError;
+exports.YAMLSyntaxError = YAMLSyntaxError;
+exports.YAMLWarning = YAMLWarning;
+exports._defineProperty = _defineProperty;
+exports.defaultTagPrefix = defaultTagPrefix;
+exports.defaultTags = defaultTags;
+
+
+/***/ }),
+
+/***/ 4044:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+
+var PlainValue = __nccwpck_require__(3343);
+var resolveSeq = __nccwpck_require__(2462);
+var warnings = __nccwpck_require__(3902);
+
+function createMap(schema, obj, ctx) {
+  const map = new resolveSeq.YAMLMap(schema);
+
+  if (obj instanceof Map) {
+    for (const [key, value] of obj) map.items.push(schema.createPair(key, value, ctx));
+  } else if (obj && typeof obj === 'object') {
+    for (const key of Object.keys(obj)) map.items.push(schema.createPair(key, obj[key], ctx));
+  }
+
+  if (typeof schema.sortMapEntries === 'function') {
+    map.items.sort(schema.sortMapEntries);
+  }
+
+  return map;
+}
+
+const map = {
+  createNode: createMap,
+  default: true,
+  nodeClass: resolveSeq.YAMLMap,
+  tag: 'tag:yaml.org,2002:map',
+  resolve: resolveSeq.resolveMap
+};
+
+function createSeq(schema, obj, ctx) {
+  const seq = new resolveSeq.YAMLSeq(schema);
+
+  if (obj && obj[Symbol.iterator]) {
+    for (const it of obj) {
+      const v = schema.createNode(it, ctx.wrapScalars, null, ctx);
+      seq.items.push(v);
+    }
+  }
+
+  return seq;
+}
+
+const seq = {
+  createNode: createSeq,
+  default: true,
+  nodeClass: resolveSeq.YAMLSeq,
+  tag: 'tag:yaml.org,2002:seq',
+  resolve: resolveSeq.resolveSeq
+};
+
+const string = {
+  identify: value => typeof value === 'string',
+  default: true,
+  tag: 'tag:yaml.org,2002:str',
+  resolve: resolveSeq.resolveString,
+
+  stringify(item, ctx, onComment, onChompKeep) {
+    ctx = Object.assign({
+      actualString: true
+    }, ctx);
+    return resolveSeq.stringifyString(item, ctx, onComment, onChompKeep);
+  },
+
+  options: resolveSeq.strOptions
+};
+
+const failsafe = [map, seq, string];
+
+/* global BigInt */
+
+const intIdentify$2 = value => typeof value === 'bigint' || Number.isInteger(value);
+
+const intResolve$1 = (src, part, radix) => resolveSeq.intOptions.asBigInt ? BigInt(src) : parseInt(part, radix);
+
+function intStringify$1(node, radix, prefix) {
+  const {
+    value
+  } = node;
+  if (intIdentify$2(value) && value >= 0) return prefix + value.toString(radix);
+  return resolveSeq.stringifyNumber(node);
+}
+
+const nullObj = {
+  identify: value => value == null,
+  createNode: (schema, value, ctx) => ctx.wrapScalars ? new resolveSeq.Scalar(null) : null,
+  default: true,
+  tag: 'tag:yaml.org,2002:null',
+  test: /^(?:~|[Nn]ull|NULL)?$/,
+  resolve: () => null,
+  options: resolveSeq.nullOptions,
+  stringify: () => resolveSeq.nullOptions.nullStr
+};
+const boolObj = {
+  identify: value => typeof value === 'boolean',
+  default: true,
+  tag: 'tag:yaml.org,2002:bool',
+  test: /^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$/,
+  resolve: str => str[0] === 't' || str[0] === 'T',
+  options: resolveSeq.boolOptions,
+  stringify: ({
+    value
+  }) => value ? resolveSeq.boolOptions.trueStr : resolveSeq.boolOptions.falseStr
+};
+const octObj = {
+  identify: value => intIdentify$2(value) && value >= 0,
+  default: true,
+  tag: 'tag:yaml.org,2002:int',
+  format: 'OCT',
+  test: /^0o([0-7]+)$/,
+  resolve: (str, oct) => intResolve$1(str, oct, 8),
+  options: resolveSeq.intOptions,
+  stringify: node => intStringify$1(node, 8, '0o')
+};
+const intObj = {
+  identify: intIdentify$2,
+  default: true,
+  tag: 'tag:yaml.org,2002:int',
+  test: /^[-+]?[0-9]+$/,
+  resolve: str => intResolve$1(str, str, 10),
+  options: resolveSeq.intOptions,
+  stringify: resolveSeq.stringifyNumber
+};
+const hexObj = {
+  identify: value => intIdentify$2(value) && value >= 0,
+  default: true,
+  tag: 'tag:yaml.org,2002:int',
+  format: 'HEX',
+  test: /^0x([0-9a-fA-F]+)$/,
+  resolve: (str, hex) => intResolve$1(str, hex, 16),
+  options: resolveSeq.intOptions,
+  stringify: node => intStringify$1(node, 16, '0x')
+};
+const nanObj = {
+  identify: value => typeof value === 'number',
+  default: true,
+  tag: 'tag:yaml.org,2002:float',
+  test: /^(?:[-+]?\.inf|(\.nan))$/i,
+  resolve: (str, nan) => nan ? NaN : str[0] === '-' ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+  stringify: resolveSeq.stringifyNumber
+};
+const expObj = {
+  identify: value => typeof value === 'number',
+  default: true,
+  tag: 'tag:yaml.org,2002:float',
+  format: 'EXP',
+  test: /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$/,
+  resolve: str => parseFloat(str),
+  stringify: ({
+    value
+  }) => Number(value).toExponential()
+};
+const floatObj = {
+  identify: value => typeof value === 'number',
+  default: true,
+  tag: 'tag:yaml.org,2002:float',
+  test: /^[-+]?(?:\.([0-9]+)|[0-9]+\.([0-9]*))$/,
+
+  resolve(str, frac1, frac2) {
+    const frac = frac1 || frac2;
+    const node = new resolveSeq.Scalar(parseFloat(str));
+    if (frac && frac[frac.length - 1] === '0') node.minFractionDigits = frac.length;
+    return node;
+  },
+
+  stringify: resolveSeq.stringifyNumber
+};
+const core = failsafe.concat([nullObj, boolObj, octObj, intObj, hexObj, nanObj, expObj, floatObj]);
+
+/* global BigInt */
+
+const intIdentify$1 = value => typeof value === 'bigint' || Number.isInteger(value);
+
+const stringifyJSON = ({
+  value
+}) => JSON.stringify(value);
+
+const json = [map, seq, {
+  identify: value => typeof value === 'string',
+  default: true,
+  tag: 'tag:yaml.org,2002:str',
+  resolve: resolveSeq.resolveString,
+  stringify: stringifyJSON
+}, {
+  identify: value => value == null,
+  createNode: (schema, value, ctx) => ctx.wrapScalars ? new resolveSeq.Scalar(null) : null,
+  default: true,
+  tag: 'tag:yaml.org,2002:null',
+  test: /^null$/,
+  resolve: () => null,
+  stringify: stringifyJSON
+}, {
+  identify: value => typeof value === 'boolean',
+  default: true,
+  tag: 'tag:yaml.org,2002:bool',
+  test: /^true|false$/,
+  resolve: str => str === 'true',
+  stringify: stringifyJSON
+}, {
+  identify: intIdentify$1,
+  default: true,
+  tag: 'tag:yaml.org,2002:int',
+  test: /^-?(?:0|[1-9][0-9]*)$/,
+  resolve: str => resolveSeq.intOptions.asBigInt ? BigInt(str) : parseInt(str, 10),
+  stringify: ({
+    value
+  }) => intIdentify$1(value) ? value.toString() : JSON.stringify(value)
+}, {
+  identify: value => typeof value === 'number',
+  default: true,
+  tag: 'tag:yaml.org,2002:float',
+  test: /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?$/,
+  resolve: str => parseFloat(str),
+  stringify: stringifyJSON
+}];
+
+json.scalarFallback = str => {
+  throw new SyntaxError(`Unresolved plain scalar ${JSON.stringify(str)}`);
+};
+
+/* global BigInt */
+
+const boolStringify = ({
+  value
+}) => value ? resolveSeq.boolOptions.trueStr : resolveSeq.boolOptions.falseStr;
+
+const intIdentify = value => typeof value === 'bigint' || Number.isInteger(value);
+
+function intResolve(sign, src, radix) {
+  let str = src.replace(/_/g, '');
+
+  if (resolveSeq.intOptions.asBigInt) {
+    switch (radix) {
+      case 2:
+        str = `0b${str}`;
+        break;
+
+      case 8:
+        str = `0o${str}`;
+        break;
+
+      case 16:
+        str = `0x${str}`;
+        break;
+    }
+
+    const n = BigInt(str);
+    return sign === '-' ? BigInt(-1) * n : n;
+  }
+
+  const n = parseInt(str, radix);
+  return sign === '-' ? -1 * n : n;
+}
+
+function intStringify(node, radix, prefix) {
+  const {
+    value
+  } = node;
+
+  if (intIdentify(value)) {
+    const str = value.toString(radix);
+    return value < 0 ? '-' + prefix + str.substr(1) : prefix + str;
+  }
+
+  return resolveSeq.stringifyNumber(node);
+}
+
+const yaml11 = failsafe.concat([{
+  identify: value => value == null,
+  createNode: (schema, value, ctx) => ctx.wrapScalars ? new resolveSeq.Scalar(null) : null,
+  default: true,
+  tag: 'tag:yaml.org,2002:null',
+  test: /^(?:~|[Nn]ull|NULL)?$/,
+  resolve: () => null,
+  options: resolveSeq.nullOptions,
+  stringify: () => resolveSeq.nullOptions.nullStr
+}, {
+  identify: value => typeof value === 'boolean',
+  default: true,
+  tag: 'tag:yaml.org,2002:bool',
+  test: /^(?:Y|y|[Yy]es|YES|[Tt]rue|TRUE|[Oo]n|ON)$/,
+  resolve: () => true,
+  options: resolveSeq.boolOptions,
+  stringify: boolStringify
+}, {
+  identify: value => typeof value === 'boolean',
+  default: true,
+  tag: 'tag:yaml.org,2002:bool',
+  test: /^(?:N|n|[Nn]o|NO|[Ff]alse|FALSE|[Oo]ff|OFF)$/i,
+  resolve: () => false,
+  options: resolveSeq.boolOptions,
+  stringify: boolStringify
+}, {
+  identify: intIdentify,
+  default: true,
+  tag: 'tag:yaml.org,2002:int',
+  format: 'BIN',
+  test: /^([-+]?)0b([0-1_]+)$/,
+  resolve: (str, sign, bin) => intResolve(sign, bin, 2),
+  stringify: node => intStringify(node, 2, '0b')
+}, {
+  identify: intIdentify,
+  default: true,
+  tag: 'tag:yaml.org,2002:int',
+  format: 'OCT',
+  test: /^([-+]?)0([0-7_]+)$/,
+  resolve: (str, sign, oct) => intResolve(sign, oct, 8),
+  stringify: node => intStringify(node, 8, '0')
+}, {
+  identify: intIdentify,
+  default: true,
+  tag: 'tag:yaml.org,2002:int',
+  test: /^([-+]?)([0-9][0-9_]*)$/,
+  resolve: (str, sign, abs) => intResolve(sign, abs, 10),
+  stringify: resolveSeq.stringifyNumber
+}, {
+  identify: intIdentify,
+  default: true,
+  tag: 'tag:yaml.org,2002:int',
+  format: 'HEX',
+  test: /^([-+]?)0x([0-9a-fA-F_]+)$/,
+  resolve: (str, sign, hex) => intResolve(sign, hex, 16),
+  stringify: node => intStringify(node, 16, '0x')
+}, {
+  identify: value => typeof value === 'number',
+  default: true,
+  tag: 'tag:yaml.org,2002:float',
+  test: /^(?:[-+]?\.inf|(\.nan))$/i,
+  resolve: (str, nan) => nan ? NaN : str[0] === '-' ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+  stringify: resolveSeq.stringifyNumber
+}, {
+  identify: value => typeof value === 'number',
+  default: true,
+  tag: 'tag:yaml.org,2002:float',
+  format: 'EXP',
+  test: /^[-+]?([0-9][0-9_]*)?(\.[0-9_]*)?[eE][-+]?[0-9]+$/,
+  resolve: str => parseFloat(str.replace(/_/g, '')),
+  stringify: ({
+    value
+  }) => Number(value).toExponential()
+}, {
+  identify: value => typeof value === 'number',
+  default: true,
+  tag: 'tag:yaml.org,2002:float',
+  test: /^[-+]?(?:[0-9][0-9_]*)?\.([0-9_]*)$/,
+
+  resolve(str, frac) {
+    const node = new resolveSeq.Scalar(parseFloat(str.replace(/_/g, '')));
+
+    if (frac) {
+      const f = frac.replace(/_/g, '');
+      if (f[f.length - 1] === '0') node.minFractionDigits = f.length;
+    }
+
+    return node;
+  },
+
+  stringify: resolveSeq.stringifyNumber
+}], warnings.binary, warnings.omap, warnings.pairs, warnings.set, warnings.intTime, warnings.floatTime, warnings.timestamp);
+
+const schemas = {
+  core,
+  failsafe,
+  json,
+  yaml11
+};
+const tags = {
+  binary: warnings.binary,
+  bool: boolObj,
+  float: floatObj,
+  floatExp: expObj,
+  floatNaN: nanObj,
+  floatTime: warnings.floatTime,
+  int: intObj,
+  intHex: hexObj,
+  intOct: octObj,
+  intTime: warnings.intTime,
+  map,
+  null: nullObj,
+  omap: warnings.omap,
+  pairs: warnings.pairs,
+  seq,
+  set: warnings.set,
+  timestamp: warnings.timestamp
+};
+
+function findTagObject(value, tagName, tags) {
+  if (tagName) {
+    const match = tags.filter(t => t.tag === tagName);
+    const tagObj = match.find(t => !t.format) || match[0];
+    if (!tagObj) throw new Error(`Tag ${tagName} not found`);
+    return tagObj;
+  } // TODO: deprecate/remove class check
+
+
+  return tags.find(t => (t.identify && t.identify(value) || t.class && value instanceof t.class) && !t.format);
+}
+
+function createNode(value, tagName, ctx) {
+  if (value instanceof resolveSeq.Node) return value;
+  const {
+    defaultPrefix,
+    onTagObj,
+    prevObjects,
+    schema,
+    wrapScalars
+  } = ctx;
+  if (tagName && tagName.startsWith('!!')) tagName = defaultPrefix + tagName.slice(2);
+  let tagObj = findTagObject(value, tagName, schema.tags);
+
+  if (!tagObj) {
+    if (typeof value.toJSON === 'function') value = value.toJSON();
+    if (!value || typeof value !== 'object') return wrapScalars ? new resolveSeq.Scalar(value) : value;
+    tagObj = value instanceof Map ? map : value[Symbol.iterator] ? seq : map;
+  }
+
+  if (onTagObj) {
+    onTagObj(tagObj);
+    delete ctx.onTagObj;
+  } // Detect duplicate references to the same object & use Alias nodes for all
+  // after first. The `obj` wrapper allows for circular references to resolve.
+
+
+  const obj = {
+    value: undefined,
+    node: undefined
+  };
+
+  if (value && typeof value === 'object' && prevObjects) {
+    const prev = prevObjects.get(value);
+
+    if (prev) {
+      const alias = new resolveSeq.Alias(prev); // leaves source dirty; must be cleaned by caller
+
+      ctx.aliasNodes.push(alias); // defined along with prevObjects
+
+      return alias;
+    }
+
+    obj.value = value;
+    prevObjects.set(value, obj);
+  }
+
+  obj.node = tagObj.createNode ? tagObj.createNode(ctx.schema, value, ctx) : wrapScalars ? new resolveSeq.Scalar(value) : value;
+  if (tagName && obj.node instanceof resolveSeq.Node) obj.node.tag = tagName;
+  return obj.node;
+}
+
+function getSchemaTags(schemas, knownTags, customTags, schemaId) {
+  let tags = schemas[schemaId.replace(/\W/g, '')]; // 'yaml-1.1' -> 'yaml11'
+
+  if (!tags) {
+    const keys = Object.keys(schemas).map(key => JSON.stringify(key)).join(', ');
+    throw new Error(`Unknown schema "${schemaId}"; use one of ${keys}`);
+  }
+
+  if (Array.isArray(customTags)) {
+    for (const tag of customTags) tags = tags.concat(tag);
+  } else if (typeof customTags === 'function') {
+    tags = customTags(tags.slice());
+  }
+
+  for (let i = 0; i < tags.length; ++i) {
+    const tag = tags[i];
+
+    if (typeof tag === 'string') {
+      const tagObj = knownTags[tag];
+
+      if (!tagObj) {
+        const keys = Object.keys(knownTags).map(key => JSON.stringify(key)).join(', ');
+        throw new Error(`Unknown custom tag "${tag}"; use one of ${keys}`);
+      }
+
+      tags[i] = tagObj;
+    }
+  }
+
+  return tags;
+}
+
+const sortMapEntriesByKey = (a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+
+class Schema {
+  // TODO: remove in v2
+  // TODO: remove in v2
+  constructor({
+    customTags,
+    merge,
+    schema,
+    sortMapEntries,
+    tags: deprecatedCustomTags
+  }) {
+    this.merge = !!merge;
+    this.name = schema;
+    this.sortMapEntries = sortMapEntries === true ? sortMapEntriesByKey : sortMapEntries || null;
+    if (!customTags && deprecatedCustomTags) warnings.warnOptionDeprecation('tags', 'customTags');
+    this.tags = getSchemaTags(schemas, tags, customTags || deprecatedCustomTags, schema);
+  }
+
+  createNode(value, wrapScalars, tagName, ctx) {
+    const baseCtx = {
+      defaultPrefix: Schema.defaultPrefix,
+      schema: this,
+      wrapScalars
+    };
+    const createCtx = ctx ? Object.assign(ctx, baseCtx) : baseCtx;
+    return createNode(value, tagName, createCtx);
+  }
+
+  createPair(key, value, ctx) {
+    if (!ctx) ctx = {
+      wrapScalars: true
+    };
+    const k = this.createNode(key, ctx.wrapScalars, null, ctx);
+    const v = this.createNode(value, ctx.wrapScalars, null, ctx);
+    return new resolveSeq.Pair(k, v);
+  }
+
+}
+
+PlainValue._defineProperty(Schema, "defaultPrefix", PlainValue.defaultTagPrefix);
+
+PlainValue._defineProperty(Schema, "defaultTags", PlainValue.defaultTags);
+
+exports.Schema = Schema;
+
+
+/***/ }),
+
+/***/ 4470:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+
+var parseCst = __nccwpck_require__(5649);
+var Document$1 = __nccwpck_require__(9788);
+var Schema = __nccwpck_require__(4044);
+var PlainValue = __nccwpck_require__(3343);
+var warnings = __nccwpck_require__(3902);
+__nccwpck_require__(2462);
+
+function createNode(value, wrapScalars = true, tag) {
+  if (tag === undefined && typeof wrapScalars === 'string') {
+    tag = wrapScalars;
+    wrapScalars = true;
+  }
+
+  const options = Object.assign({}, Document$1.Document.defaults[Document$1.defaultOptions.version], Document$1.defaultOptions);
+  const schema = new Schema.Schema(options);
+  return schema.createNode(value, wrapScalars, tag);
+}
+
+class Document extends Document$1.Document {
+  constructor(options) {
+    super(Object.assign({}, Document$1.defaultOptions, options));
+  }
+
+}
+
+function parseAllDocuments(src, options) {
+  const stream = [];
+  let prev;
+
+  for (const cstDoc of parseCst.parse(src)) {
+    const doc = new Document(options);
+    doc.parse(cstDoc, prev);
+    stream.push(doc);
+    prev = doc;
+  }
+
+  return stream;
+}
+
+function parseDocument(src, options) {
+  const cst = parseCst.parse(src);
+  const doc = new Document(options).parse(cst[0]);
+
+  if (cst.length > 1) {
+    const errMsg = 'Source contains multiple documents; please use YAML.parseAllDocuments()';
+    doc.errors.unshift(new PlainValue.YAMLSemanticError(cst[1], errMsg));
+  }
+
+  return doc;
+}
+
+function parse(src, options) {
+  const doc = parseDocument(src, options);
+  doc.warnings.forEach(warning => warnings.warn(warning));
+  if (doc.errors.length > 0) throw doc.errors[0];
+  return doc.toJSON();
+}
+
+function stringify(value, options) {
+  const doc = new Document(options);
+  doc.contents = value;
+  return String(doc);
+}
+
+const YAML = {
+  createNode,
+  defaultOptions: Document$1.defaultOptions,
+  Document,
+  parse,
+  parseAllDocuments,
+  parseCST: parseCst.parse,
+  parseDocument,
+  scalarOptions: Document$1.scalarOptions,
+  stringify
+};
+
+exports.YAML = YAML;
+
+
+/***/ }),
+
+/***/ 5649:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+
+var PlainValue = __nccwpck_require__(3343);
+
+class BlankLine extends PlainValue.Node {
+  constructor() {
+    super(PlainValue.Type.BLANK_LINE);
+  }
+  /* istanbul ignore next */
+
+
+  get includesTrailingLines() {
+    // This is never called from anywhere, but if it were,
+    // this is the value it should return.
+    return true;
+  }
+  /**
+   * Parses a blank line from the source
+   *
+   * @param {ParseContext} context
+   * @param {number} start - Index of first \n character
+   * @returns {number} - Index of the character after this
+   */
+
+
+  parse(context, start) {
+    this.context = context;
+    this.range = new PlainValue.Range(start, start + 1);
+    return start + 1;
+  }
+
+}
+
+class CollectionItem extends PlainValue.Node {
+  constructor(type, props) {
+    super(type, props);
+    this.node = null;
+  }
+
+  get includesTrailingLines() {
+    return !!this.node && this.node.includesTrailingLines;
+  }
+  /**
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this
+   */
+
+
+  parse(context, start) {
+    this.context = context;
+    const {
+      parseNode,
+      src
+    } = context;
+    let {
+      atLineStart,
+      lineStart
+    } = context;
+    if (!atLineStart && this.type === PlainValue.Type.SEQ_ITEM) this.error = new PlainValue.YAMLSemanticError(this, 'Sequence items must not have preceding content on the same line');
+    const indent = atLineStart ? start - lineStart : context.indent;
+    let offset = PlainValue.Node.endOfWhiteSpace(src, start + 1);
+    let ch = src[offset];
+    const inlineComment = ch === '#';
+    const comments = [];
+    let blankLine = null;
+
+    while (ch === '\n' || ch === '#') {
+      if (ch === '#') {
+        const end = PlainValue.Node.endOfLine(src, offset + 1);
+        comments.push(new PlainValue.Range(offset, end));
+        offset = end;
+      } else {
+        atLineStart = true;
+        lineStart = offset + 1;
+        const wsEnd = PlainValue.Node.endOfWhiteSpace(src, lineStart);
+
+        if (src[wsEnd] === '\n' && comments.length === 0) {
+          blankLine = new BlankLine();
+          lineStart = blankLine.parse({
+            src
+          }, lineStart);
+        }
+
+        offset = PlainValue.Node.endOfIndent(src, lineStart);
+      }
+
+      ch = src[offset];
+    }
+
+    if (PlainValue.Node.nextNodeIsIndented(ch, offset - (lineStart + indent), this.type !== PlainValue.Type.SEQ_ITEM)) {
+      this.node = parseNode({
+        atLineStart,
+        inCollection: false,
+        indent,
+        lineStart,
+        parent: this
+      }, offset);
+    } else if (ch && lineStart > start + 1) {
+      offset = lineStart - 1;
+    }
+
+    if (this.node) {
+      if (blankLine) {
+        // Only blank lines preceding non-empty nodes are captured. Note that
+        // this means that collection item range start indices do not always
+        // increase monotonically. -- eemeli/yaml#126
+        const items = context.parent.items || context.parent.contents;
+        if (items) items.push(blankLine);
+      }
+
+      if (comments.length) Array.prototype.push.apply(this.props, comments);
+      offset = this.node.range.end;
+    } else {
+      if (inlineComment) {
+        const c = comments[0];
+        this.props.push(c);
+        offset = c.end;
+      } else {
+        offset = PlainValue.Node.endOfLine(src, start + 1);
+      }
+    }
+
+    const end = this.node ? this.node.valueRange.end : offset;
+    this.valueRange = new PlainValue.Range(start, end);
+    return offset;
+  }
+
+  setOrigRanges(cr, offset) {
+    offset = super.setOrigRanges(cr, offset);
+    return this.node ? this.node.setOrigRanges(cr, offset) : offset;
+  }
+
+  toString() {
+    const {
+      context: {
+        src
+      },
+      node,
+      range,
+      value
+    } = this;
+    if (value != null) return value;
+    const str = node ? src.slice(range.start, node.range.start) + String(node) : src.slice(range.start, range.end);
+    return PlainValue.Node.addStringTerminator(src, range.end, str);
+  }
+
+}
+
+class Comment extends PlainValue.Node {
+  constructor() {
+    super(PlainValue.Type.COMMENT);
+  }
+  /**
+   * Parses a comment line from the source
+   *
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this scalar
+   */
+
+
+  parse(context, start) {
+    this.context = context;
+    const offset = this.parseComment(start);
+    this.range = new PlainValue.Range(start, offset);
+    return offset;
+  }
+
+}
+
+function grabCollectionEndComments(node) {
+  let cnode = node;
+
+  while (cnode instanceof CollectionItem) cnode = cnode.node;
+
+  if (!(cnode instanceof Collection)) return null;
+  const len = cnode.items.length;
+  let ci = -1;
+
+  for (let i = len - 1; i >= 0; --i) {
+    const n = cnode.items[i];
+
+    if (n.type === PlainValue.Type.COMMENT) {
+      // Keep sufficiently indented comments with preceding node
+      const {
+        indent,
+        lineStart
+      } = n.context;
+      if (indent > 0 && n.range.start >= lineStart + indent) break;
+      ci = i;
+    } else if (n.type === PlainValue.Type.BLANK_LINE) ci = i;else break;
+  }
+
+  if (ci === -1) return null;
+  const ca = cnode.items.splice(ci, len - ci);
+  const prevEnd = ca[0].range.start;
+
+  while (true) {
+    cnode.range.end = prevEnd;
+    if (cnode.valueRange && cnode.valueRange.end > prevEnd) cnode.valueRange.end = prevEnd;
+    if (cnode === node) break;
+    cnode = cnode.context.parent;
+  }
+
+  return ca;
+}
+class Collection extends PlainValue.Node {
+  static nextContentHasIndent(src, offset, indent) {
+    const lineStart = PlainValue.Node.endOfLine(src, offset) + 1;
+    offset = PlainValue.Node.endOfWhiteSpace(src, lineStart);
+    const ch = src[offset];
+    if (!ch) return false;
+    if (offset >= lineStart + indent) return true;
+    if (ch !== '#' && ch !== '\n') return false;
+    return Collection.nextContentHasIndent(src, offset, indent);
+  }
+
+  constructor(firstItem) {
+    super(firstItem.type === PlainValue.Type.SEQ_ITEM ? PlainValue.Type.SEQ : PlainValue.Type.MAP);
+
+    for (let i = firstItem.props.length - 1; i >= 0; --i) {
+      if (firstItem.props[i].start < firstItem.context.lineStart) {
+        // props on previous line are assumed by the collection
+        this.props = firstItem.props.slice(0, i + 1);
+        firstItem.props = firstItem.props.slice(i + 1);
+        const itemRange = firstItem.props[0] || firstItem.valueRange;
+        firstItem.range.start = itemRange.start;
+        break;
+      }
+    }
+
+    this.items = [firstItem];
+    const ec = grabCollectionEndComments(firstItem);
+    if (ec) Array.prototype.push.apply(this.items, ec);
+  }
+
+  get includesTrailingLines() {
+    return this.items.length > 0;
+  }
+  /**
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this
+   */
+
+
+  parse(context, start) {
+    this.context = context;
+    const {
+      parseNode,
+      src
+    } = context; // It's easier to recalculate lineStart here rather than tracking down the
+    // last context from which to read it -- eemeli/yaml#2
+
+    let lineStart = PlainValue.Node.startOfLine(src, start);
+    const firstItem = this.items[0]; // First-item context needs to be correct for later comment handling
+    // -- eemeli/yaml#17
+
+    firstItem.context.parent = this;
+    this.valueRange = PlainValue.Range.copy(firstItem.valueRange);
+    const indent = firstItem.range.start - firstItem.context.lineStart;
+    let offset = start;
+    offset = PlainValue.Node.normalizeOffset(src, offset);
+    let ch = src[offset];
+    let atLineStart = PlainValue.Node.endOfWhiteSpace(src, lineStart) === offset;
+    let prevIncludesTrailingLines = false;
+
+    while (ch) {
+      while (ch === '\n' || ch === '#') {
+        if (atLineStart && ch === '\n' && !prevIncludesTrailingLines) {
+          const blankLine = new BlankLine();
+          offset = blankLine.parse({
+            src
+          }, offset);
+          this.valueRange.end = offset;
+
+          if (offset >= src.length) {
+            ch = null;
+            break;
+          }
+
+          this.items.push(blankLine);
+          offset -= 1; // blankLine.parse() consumes terminal newline
+        } else if (ch === '#') {
+          if (offset < lineStart + indent && !Collection.nextContentHasIndent(src, offset, indent)) {
+            return offset;
+          }
+
+          const comment = new Comment();
+          offset = comment.parse({
+            indent,
+            lineStart,
+            src
+          }, offset);
+          this.items.push(comment);
+          this.valueRange.end = offset;
+
+          if (offset >= src.length) {
+            ch = null;
+            break;
+          }
+        }
+
+        lineStart = offset + 1;
+        offset = PlainValue.Node.endOfIndent(src, lineStart);
+
+        if (PlainValue.Node.atBlank(src, offset)) {
+          const wsEnd = PlainValue.Node.endOfWhiteSpace(src, offset);
+          const next = src[wsEnd];
+
+          if (!next || next === '\n' || next === '#') {
+            offset = wsEnd;
+          }
+        }
+
+        ch = src[offset];
+        atLineStart = true;
+      }
+
+      if (!ch) {
+        break;
+      }
+
+      if (offset !== lineStart + indent && (atLineStart || ch !== ':')) {
+        if (offset < lineStart + indent) {
+          if (lineStart > start) offset = lineStart;
+          break;
+        } else if (!this.error) {
+          const msg = 'All collection items must start at the same column';
+          this.error = new PlainValue.YAMLSyntaxError(this, msg);
+        }
+      }
+
+      if (firstItem.type === PlainValue.Type.SEQ_ITEM) {
+        if (ch !== '-') {
+          if (lineStart > start) offset = lineStart;
+          break;
+        }
+      } else if (ch === '-' && !this.error) {
+        // map key may start with -, as long as it's followed by a non-whitespace char
+        const next = src[offset + 1];
+
+        if (!next || next === '\n' || next === '\t' || next === ' ') {
+          const msg = 'A collection cannot be both a mapping and a sequence';
+          this.error = new PlainValue.YAMLSyntaxError(this, msg);
+        }
+      }
+
+      const node = parseNode({
+        atLineStart,
+        inCollection: true,
+        indent,
+        lineStart,
+        parent: this
+      }, offset);
+      if (!node) return offset; // at next document start
+
+      this.items.push(node);
+      this.valueRange.end = node.valueRange.end;
+      offset = PlainValue.Node.normalizeOffset(src, node.range.end);
+      ch = src[offset];
+      atLineStart = false;
+      prevIncludesTrailingLines = node.includesTrailingLines; // Need to reset lineStart and atLineStart here if preceding node's range
+      // has advanced to check the current line's indentation level
+      // -- eemeli/yaml#10 & eemeli/yaml#38
+
+      if (ch) {
+        let ls = offset - 1;
+        let prev = src[ls];
+
+        while (prev === ' ' || prev === '\t') prev = src[--ls];
+
+        if (prev === '\n') {
+          lineStart = ls + 1;
+          atLineStart = true;
+        }
+      }
+
+      const ec = grabCollectionEndComments(node);
+      if (ec) Array.prototype.push.apply(this.items, ec);
+    }
+
+    return offset;
+  }
+
+  setOrigRanges(cr, offset) {
+    offset = super.setOrigRanges(cr, offset);
+    this.items.forEach(node => {
+      offset = node.setOrigRanges(cr, offset);
+    });
+    return offset;
+  }
+
+  toString() {
+    const {
+      context: {
+        src
+      },
+      items,
+      range,
+      value
+    } = this;
+    if (value != null) return value;
+    let str = src.slice(range.start, items[0].range.start) + String(items[0]);
+
+    for (let i = 1; i < items.length; ++i) {
+      const item = items[i];
+      const {
+        atLineStart,
+        indent
+      } = item.context;
+      if (atLineStart) for (let i = 0; i < indent; ++i) str += ' ';
+      str += String(item);
+    }
+
+    return PlainValue.Node.addStringTerminator(src, range.end, str);
+  }
+
+}
+
+class Directive extends PlainValue.Node {
+  constructor() {
+    super(PlainValue.Type.DIRECTIVE);
+    this.name = null;
+  }
+
+  get parameters() {
+    const raw = this.rawValue;
+    return raw ? raw.trim().split(/[ \t]+/) : [];
+  }
+
+  parseName(start) {
+    const {
+      src
+    } = this.context;
+    let offset = start;
+    let ch = src[offset];
+
+    while (ch && ch !== '\n' && ch !== '\t' && ch !== ' ') ch = src[offset += 1];
+
+    this.name = src.slice(start, offset);
+    return offset;
+  }
+
+  parseParameters(start) {
+    const {
+      src
+    } = this.context;
+    let offset = start;
+    let ch = src[offset];
+
+    while (ch && ch !== '\n' && ch !== '#') ch = src[offset += 1];
+
+    this.valueRange = new PlainValue.Range(start, offset);
+    return offset;
+  }
+
+  parse(context, start) {
+    this.context = context;
+    let offset = this.parseName(start + 1);
+    offset = this.parseParameters(offset);
+    offset = this.parseComment(offset);
+    this.range = new PlainValue.Range(start, offset);
+    return offset;
+  }
+
+}
+
+class Document extends PlainValue.Node {
+  static startCommentOrEndBlankLine(src, start) {
+    const offset = PlainValue.Node.endOfWhiteSpace(src, start);
+    const ch = src[offset];
+    return ch === '#' || ch === '\n' ? offset : start;
+  }
+
+  constructor() {
+    super(PlainValue.Type.DOCUMENT);
+    this.directives = null;
+    this.contents = null;
+    this.directivesEndMarker = null;
+    this.documentEndMarker = null;
+  }
+
+  parseDirectives(start) {
+    const {
+      src
+    } = this.context;
+    this.directives = [];
+    let atLineStart = true;
+    let hasDirectives = false;
+    let offset = start;
+
+    while (!PlainValue.Node.atDocumentBoundary(src, offset, PlainValue.Char.DIRECTIVES_END)) {
+      offset = Document.startCommentOrEndBlankLine(src, offset);
+
+      switch (src[offset]) {
+        case '\n':
+          if (atLineStart) {
+            const blankLine = new BlankLine();
+            offset = blankLine.parse({
+              src
+            }, offset);
+
+            if (offset < src.length) {
+              this.directives.push(blankLine);
+            }
+          } else {
+            offset += 1;
+            atLineStart = true;
+          }
+
+          break;
+
+        case '#':
+          {
+            const comment = new Comment();
+            offset = comment.parse({
+              src
+            }, offset);
+            this.directives.push(comment);
+            atLineStart = false;
+          }
+          break;
+
+        case '%':
+          {
+            const directive = new Directive();
+            offset = directive.parse({
+              parent: this,
+              src
+            }, offset);
+            this.directives.push(directive);
+            hasDirectives = true;
+            atLineStart = false;
+          }
+          break;
+
+        default:
+          if (hasDirectives) {
+            this.error = new PlainValue.YAMLSemanticError(this, 'Missing directives-end indicator line');
+          } else if (this.directives.length > 0) {
+            this.contents = this.directives;
+            this.directives = [];
+          }
+
+          return offset;
+      }
+    }
+
+    if (src[offset]) {
+      this.directivesEndMarker = new PlainValue.Range(offset, offset + 3);
+      return offset + 3;
+    }
+
+    if (hasDirectives) {
+      this.error = new PlainValue.YAMLSemanticError(this, 'Missing directives-end indicator line');
+    } else if (this.directives.length > 0) {
+      this.contents = this.directives;
+      this.directives = [];
+    }
+
+    return offset;
+  }
+
+  parseContents(start) {
+    const {
+      parseNode,
+      src
+    } = this.context;
+    if (!this.contents) this.contents = [];
+    let lineStart = start;
+
+    while (src[lineStart - 1] === '-') lineStart -= 1;
+
+    let offset = PlainValue.Node.endOfWhiteSpace(src, start);
+    let atLineStart = lineStart === start;
+    this.valueRange = new PlainValue.Range(offset);
+
+    while (!PlainValue.Node.atDocumentBoundary(src, offset, PlainValue.Char.DOCUMENT_END)) {
+      switch (src[offset]) {
+        case '\n':
+          if (atLineStart) {
+            const blankLine = new BlankLine();
+            offset = blankLine.parse({
+              src
+            }, offset);
+
+            if (offset < src.length) {
+              this.contents.push(blankLine);
+            }
+          } else {
+            offset += 1;
+            atLineStart = true;
+          }
+
+          lineStart = offset;
+          break;
+
+        case '#':
+          {
+            const comment = new Comment();
+            offset = comment.parse({
+              src
+            }, offset);
+            this.contents.push(comment);
+            atLineStart = false;
+          }
+          break;
+
+        default:
+          {
+            const iEnd = PlainValue.Node.endOfIndent(src, offset);
+            const context = {
+              atLineStart,
+              indent: -1,
+              inFlow: false,
+              inCollection: false,
+              lineStart,
+              parent: this
+            };
+            const node = parseNode(context, iEnd);
+            if (!node) return this.valueRange.end = iEnd; // at next document start
+
+            this.contents.push(node);
+            offset = node.range.end;
+            atLineStart = false;
+            const ec = grabCollectionEndComments(node);
+            if (ec) Array.prototype.push.apply(this.contents, ec);
+          }
+      }
+
+      offset = Document.startCommentOrEndBlankLine(src, offset);
+    }
+
+    this.valueRange.end = offset;
+
+    if (src[offset]) {
+      this.documentEndMarker = new PlainValue.Range(offset, offset + 3);
+      offset += 3;
+
+      if (src[offset]) {
+        offset = PlainValue.Node.endOfWhiteSpace(src, offset);
+
+        if (src[offset] === '#') {
+          const comment = new Comment();
+          offset = comment.parse({
+            src
+          }, offset);
+          this.contents.push(comment);
+        }
+
+        switch (src[offset]) {
+          case '\n':
+            offset += 1;
+            break;
+
+          case undefined:
+            break;
+
+          default:
+            this.error = new PlainValue.YAMLSyntaxError(this, 'Document end marker line cannot have a non-comment suffix');
+        }
+      }
+    }
+
+    return offset;
+  }
+  /**
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this
+   */
+
+
+  parse(context, start) {
+    context.root = this;
+    this.context = context;
+    const {
+      src
+    } = context;
+    let offset = src.charCodeAt(start) === 0xfeff ? start + 1 : start; // skip BOM
+
+    offset = this.parseDirectives(offset);
+    offset = this.parseContents(offset);
+    return offset;
+  }
+
+  setOrigRanges(cr, offset) {
+    offset = super.setOrigRanges(cr, offset);
+    this.directives.forEach(node => {
+      offset = node.setOrigRanges(cr, offset);
+    });
+    if (this.directivesEndMarker) offset = this.directivesEndMarker.setOrigRange(cr, offset);
+    this.contents.forEach(node => {
+      offset = node.setOrigRanges(cr, offset);
+    });
+    if (this.documentEndMarker) offset = this.documentEndMarker.setOrigRange(cr, offset);
+    return offset;
+  }
+
+  toString() {
+    const {
+      contents,
+      directives,
+      value
+    } = this;
+    if (value != null) return value;
+    let str = directives.join('');
+
+    if (contents.length > 0) {
+      if (directives.length > 0 || contents[0].type === PlainValue.Type.COMMENT) str += '---\n';
+      str += contents.join('');
+    }
+
+    if (str[str.length - 1] !== '\n') str += '\n';
+    return str;
+  }
+
+}
+
+class Alias extends PlainValue.Node {
+  /**
+   * Parses an *alias from the source
+   *
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this scalar
+   */
+  parse(context, start) {
+    this.context = context;
+    const {
+      src
+    } = context;
+    let offset = PlainValue.Node.endOfIdentifier(src, start + 1);
+    this.valueRange = new PlainValue.Range(start + 1, offset);
+    offset = PlainValue.Node.endOfWhiteSpace(src, offset);
+    offset = this.parseComment(offset);
+    return offset;
+  }
+
+}
+
+const Chomp = {
+  CLIP: 'CLIP',
+  KEEP: 'KEEP',
+  STRIP: 'STRIP'
+};
+class BlockValue extends PlainValue.Node {
+  constructor(type, props) {
+    super(type, props);
+    this.blockIndent = null;
+    this.chomping = Chomp.CLIP;
+    this.header = null;
+  }
+
+  get includesTrailingLines() {
+    return this.chomping === Chomp.KEEP;
+  }
+
+  get strValue() {
+    if (!this.valueRange || !this.context) return null;
+    let {
+      start,
+      end
+    } = this.valueRange;
+    const {
+      indent,
+      src
+    } = this.context;
+    if (this.valueRange.isEmpty()) return '';
+    let lastNewLine = null;
+    let ch = src[end - 1];
+
+    while (ch === '\n' || ch === '\t' || ch === ' ') {
+      end -= 1;
+
+      if (end <= start) {
+        if (this.chomping === Chomp.KEEP) break;else return ''; // probably never happens
+      }
+
+      if (ch === '\n') lastNewLine = end;
+      ch = src[end - 1];
+    }
+
+    let keepStart = end + 1;
+
+    if (lastNewLine) {
+      if (this.chomping === Chomp.KEEP) {
+        keepStart = lastNewLine;
+        end = this.valueRange.end;
+      } else {
+        end = lastNewLine;
+      }
+    }
+
+    const bi = indent + this.blockIndent;
+    const folded = this.type === PlainValue.Type.BLOCK_FOLDED;
+    let atStart = true;
+    let str = '';
+    let sep = '';
+    let prevMoreIndented = false;
+
+    for (let i = start; i < end; ++i) {
+      for (let j = 0; j < bi; ++j) {
+        if (src[i] !== ' ') break;
+        i += 1;
+      }
+
+      const ch = src[i];
+
+      if (ch === '\n') {
+        if (sep === '\n') str += '\n';else sep = '\n';
+      } else {
+        const lineEnd = PlainValue.Node.endOfLine(src, i);
+        const line = src.slice(i, lineEnd);
+        i = lineEnd;
+
+        if (folded && (ch === ' ' || ch === '\t') && i < keepStart) {
+          if (sep === ' ') sep = '\n';else if (!prevMoreIndented && !atStart && sep === '\n') sep = '\n\n';
+          str += sep + line; //+ ((lineEnd < end && src[lineEnd]) || '')
+
+          sep = lineEnd < end && src[lineEnd] || '';
+          prevMoreIndented = true;
+        } else {
+          str += sep + line;
+          sep = folded && i < keepStart ? ' ' : '\n';
+          prevMoreIndented = false;
+        }
+
+        if (atStart && line !== '') atStart = false;
+      }
+    }
+
+    return this.chomping === Chomp.STRIP ? str : str + '\n';
+  }
+
+  parseBlockHeader(start) {
+    const {
+      src
+    } = this.context;
+    let offset = start + 1;
+    let bi = '';
+
+    while (true) {
+      const ch = src[offset];
+
+      switch (ch) {
+        case '-':
+          this.chomping = Chomp.STRIP;
+          break;
+
+        case '+':
+          this.chomping = Chomp.KEEP;
+          break;
+
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+          bi += ch;
+          break;
+
+        default:
+          this.blockIndent = Number(bi) || null;
+          this.header = new PlainValue.Range(start, offset);
+          return offset;
+      }
+
+      offset += 1;
+    }
+  }
+
+  parseBlockValue(start) {
+    const {
+      indent,
+      src
+    } = this.context;
+    const explicit = !!this.blockIndent;
+    let offset = start;
+    let valueEnd = start;
+    let minBlockIndent = 1;
+
+    for (let ch = src[offset]; ch === '\n'; ch = src[offset]) {
+      offset += 1;
+      if (PlainValue.Node.atDocumentBoundary(src, offset)) break;
+      const end = PlainValue.Node.endOfBlockIndent(src, indent, offset); // should not include tab?
+
+      if (end === null) break;
+      const ch = src[end];
+      const lineIndent = end - (offset + indent);
+
+      if (!this.blockIndent) {
+        // no explicit block indent, none yet detected
+        if (src[end] !== '\n') {
+          // first line with non-whitespace content
+          if (lineIndent < minBlockIndent) {
+            const msg = 'Block scalars with more-indented leading empty lines must use an explicit indentation indicator';
+            this.error = new PlainValue.YAMLSemanticError(this, msg);
+          }
+
+          this.blockIndent = lineIndent;
+        } else if (lineIndent > minBlockIndent) {
+          // empty line with more whitespace
+          minBlockIndent = lineIndent;
+        }
+      } else if (ch && ch !== '\n' && lineIndent < this.blockIndent) {
+        if (src[end] === '#') break;
+
+        if (!this.error) {
+          const src = explicit ? 'explicit indentation indicator' : 'first line';
+          const msg = `Block scalars must not be less indented than their ${src}`;
+          this.error = new PlainValue.YAMLSemanticError(this, msg);
+        }
+      }
+
+      if (src[end] === '\n') {
+        offset = end;
+      } else {
+        offset = valueEnd = PlainValue.Node.endOfLine(src, end);
+      }
+    }
+
+    if (this.chomping !== Chomp.KEEP) {
+      offset = src[valueEnd] ? valueEnd + 1 : valueEnd;
+    }
+
+    this.valueRange = new PlainValue.Range(start + 1, offset);
+    return offset;
+  }
+  /**
+   * Parses a block value from the source
+   *
+   * Accepted forms are:
+   * ```
+   * BS
+   * block
+   * lines
+   *
+   * BS #comment
+   * block
+   * lines
+   * ```
+   * where the block style BS matches the regexp `[|>][-+1-9]*` and block lines
+   * are empty or have an indent level greater than `indent`.
+   *
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this block
+   */
+
+
+  parse(context, start) {
+    this.context = context;
+    const {
+      src
+    } = context;
+    let offset = this.parseBlockHeader(start);
+    offset = PlainValue.Node.endOfWhiteSpace(src, offset);
+    offset = this.parseComment(offset);
+    offset = this.parseBlockValue(offset);
+    return offset;
+  }
+
+  setOrigRanges(cr, offset) {
+    offset = super.setOrigRanges(cr, offset);
+    return this.header ? this.header.setOrigRange(cr, offset) : offset;
+  }
+
+}
+
+class FlowCollection extends PlainValue.Node {
+  constructor(type, props) {
+    super(type, props);
+    this.items = null;
+  }
+
+  prevNodeIsJsonLike(idx = this.items.length) {
+    const node = this.items[idx - 1];
+    return !!node && (node.jsonLike || node.type === PlainValue.Type.COMMENT && this.prevNodeIsJsonLike(idx - 1));
+  }
+  /**
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this
+   */
+
+
+  parse(context, start) {
+    this.context = context;
+    const {
+      parseNode,
+      src
+    } = context;
+    let {
+      indent,
+      lineStart
+    } = context;
+    let char = src[start]; // { or [
+
+    this.items = [{
+      char,
+      offset: start
+    }];
+    let offset = PlainValue.Node.endOfWhiteSpace(src, start + 1);
+    char = src[offset];
+
+    while (char && char !== ']' && char !== '}') {
+      switch (char) {
+        case '\n':
+          {
+            lineStart = offset + 1;
+            const wsEnd = PlainValue.Node.endOfWhiteSpace(src, lineStart);
+
+            if (src[wsEnd] === '\n') {
+              const blankLine = new BlankLine();
+              lineStart = blankLine.parse({
+                src
+              }, lineStart);
+              this.items.push(blankLine);
+            }
+
+            offset = PlainValue.Node.endOfIndent(src, lineStart);
+
+            if (offset <= lineStart + indent) {
+              char = src[offset];
+
+              if (offset < lineStart + indent || char !== ']' && char !== '}') {
+                const msg = 'Insufficient indentation in flow collection';
+                this.error = new PlainValue.YAMLSemanticError(this, msg);
+              }
+            }
+          }
+          break;
+
+        case ',':
+          {
+            this.items.push({
+              char,
+              offset
+            });
+            offset += 1;
+          }
+          break;
+
+        case '#':
+          {
+            const comment = new Comment();
+            offset = comment.parse({
+              src
+            }, offset);
+            this.items.push(comment);
+          }
+          break;
+
+        case '?':
+        case ':':
+          {
+            const next = src[offset + 1];
+
+            if (next === '\n' || next === '\t' || next === ' ' || next === ',' || // in-flow : after JSON-like key does not need to be followed by whitespace
+            char === ':' && this.prevNodeIsJsonLike()) {
+              this.items.push({
+                char,
+                offset
+              });
+              offset += 1;
+              break;
+            }
+          }
+        // fallthrough
+
+        default:
+          {
+            const node = parseNode({
+              atLineStart: false,
+              inCollection: false,
+              inFlow: true,
+              indent: -1,
+              lineStart,
+              parent: this
+            }, offset);
+
+            if (!node) {
+              // at next document start
+              this.valueRange = new PlainValue.Range(start, offset);
+              return offset;
+            }
+
+            this.items.push(node);
+            offset = PlainValue.Node.normalizeOffset(src, node.range.end);
+          }
+      }
+
+      offset = PlainValue.Node.endOfWhiteSpace(src, offset);
+      char = src[offset];
+    }
+
+    this.valueRange = new PlainValue.Range(start, offset + 1);
+
+    if (char) {
+      this.items.push({
+        char,
+        offset
+      });
+      offset = PlainValue.Node.endOfWhiteSpace(src, offset + 1);
+      offset = this.parseComment(offset);
+    }
+
+    return offset;
+  }
+
+  setOrigRanges(cr, offset) {
+    offset = super.setOrigRanges(cr, offset);
+    this.items.forEach(node => {
+      if (node instanceof PlainValue.Node) {
+        offset = node.setOrigRanges(cr, offset);
+      } else if (cr.length === 0) {
+        node.origOffset = node.offset;
+      } else {
+        let i = offset;
+
+        while (i < cr.length) {
+          if (cr[i] > node.offset) break;else ++i;
+        }
+
+        node.origOffset = node.offset + i;
+        offset = i;
+      }
+    });
+    return offset;
+  }
+
+  toString() {
+    const {
+      context: {
+        src
+      },
+      items,
+      range,
+      value
+    } = this;
+    if (value != null) return value;
+    const nodes = items.filter(item => item instanceof PlainValue.Node);
+    let str = '';
+    let prevEnd = range.start;
+    nodes.forEach(node => {
+      const prefix = src.slice(prevEnd, node.range.start);
+      prevEnd = node.range.end;
+      str += prefix + String(node);
+
+      if (str[str.length - 1] === '\n' && src[prevEnd - 1] !== '\n' && src[prevEnd] === '\n') {
+        // Comment range does not include the terminal newline, but its
+        // stringified value does. Without this fix, newlines at comment ends
+        // get duplicated.
+        prevEnd += 1;
+      }
+    });
+    str += src.slice(prevEnd, range.end);
+    return PlainValue.Node.addStringTerminator(src, range.end, str);
+  }
+
+}
+
+class QuoteDouble extends PlainValue.Node {
+  static endOfQuote(src, offset) {
+    let ch = src[offset];
+
+    while (ch && ch !== '"') {
+      offset += ch === '\\' ? 2 : 1;
+      ch = src[offset];
+    }
+
+    return offset + 1;
+  }
+  /**
+   * @returns {string | { str: string, errors: YAMLSyntaxError[] }}
+   */
+
+
+  get strValue() {
+    if (!this.valueRange || !this.context) return null;
+    const errors = [];
+    const {
+      start,
+      end
+    } = this.valueRange;
+    const {
+      indent,
+      src
+    } = this.context;
+    if (src[end - 1] !== '"') errors.push(new PlainValue.YAMLSyntaxError(this, 'Missing closing "quote')); // Using String#replace is too painful with escaped newlines preceded by
+    // escaped backslashes; also, this should be faster.
+
+    let str = '';
+
+    for (let i = start + 1; i < end - 1; ++i) {
+      const ch = src[i];
+
+      if (ch === '\n') {
+        if (PlainValue.Node.atDocumentBoundary(src, i + 1)) errors.push(new PlainValue.YAMLSemanticError(this, 'Document boundary indicators are not allowed within string values'));
+        const {
+          fold,
+          offset,
+          error
+        } = PlainValue.Node.foldNewline(src, i, indent);
+        str += fold;
+        i = offset;
+        if (error) errors.push(new PlainValue.YAMLSemanticError(this, 'Multi-line double-quoted string needs to be sufficiently indented'));
+      } else if (ch === '\\') {
+        i += 1;
+
+        switch (src[i]) {
+          case '0':
+            str += '\0';
+            break;
+          // null character
+
+          case 'a':
+            str += '\x07';
+            break;
+          // bell character
+
+          case 'b':
+            str += '\b';
+            break;
+          // backspace
+
+          case 'e':
+            str += '\x1b';
+            break;
+          // escape character
+
+          case 'f':
+            str += '\f';
+            break;
+          // form feed
+
+          case 'n':
+            str += '\n';
+            break;
+          // line feed
+
+          case 'r':
+            str += '\r';
+            break;
+          // carriage return
+
+          case 't':
+            str += '\t';
+            break;
+          // horizontal tab
+
+          case 'v':
+            str += '\v';
+            break;
+          // vertical tab
+
+          case 'N':
+            str += '\u0085';
+            break;
+          // Unicode next line
+
+          case '_':
+            str += '\u00a0';
+            break;
+          // Unicode non-breaking space
+
+          case 'L':
+            str += '\u2028';
+            break;
+          // Unicode line separator
+
+          case 'P':
+            str += '\u2029';
+            break;
+          // Unicode paragraph separator
+
+          case ' ':
+            str += ' ';
+            break;
+
+          case '"':
+            str += '"';
+            break;
+
+          case '/':
+            str += '/';
+            break;
+
+          case '\\':
+            str += '\\';
+            break;
+
+          case '\t':
+            str += '\t';
+            break;
+
+          case 'x':
+            str += this.parseCharCode(i + 1, 2, errors);
+            i += 2;
+            break;
+
+          case 'u':
+            str += this.parseCharCode(i + 1, 4, errors);
+            i += 4;
+            break;
+
+          case 'U':
+            str += this.parseCharCode(i + 1, 8, errors);
+            i += 8;
+            break;
+
+          case '\n':
+            // skip escaped newlines, but still trim the following line
+            while (src[i + 1] === ' ' || src[i + 1] === '\t') i += 1;
+
+            break;
+
+          default:
+            errors.push(new PlainValue.YAMLSyntaxError(this, `Invalid escape sequence ${src.substr(i - 1, 2)}`));
+            str += '\\' + src[i];
+        }
+      } else if (ch === ' ' || ch === '\t') {
+        // trim trailing whitespace
+        const wsStart = i;
+        let next = src[i + 1];
+
+        while (next === ' ' || next === '\t') {
+          i += 1;
+          next = src[i + 1];
+        }
+
+        if (next !== '\n') str += i > wsStart ? src.slice(wsStart, i + 1) : ch;
+      } else {
+        str += ch;
+      }
+    }
+
+    return errors.length > 0 ? {
+      errors,
+      str
+    } : str;
+  }
+
+  parseCharCode(offset, length, errors) {
+    const {
+      src
+    } = this.context;
+    const cc = src.substr(offset, length);
+    const ok = cc.length === length && /^[0-9a-fA-F]+$/.test(cc);
+    const code = ok ? parseInt(cc, 16) : NaN;
+
+    if (isNaN(code)) {
+      errors.push(new PlainValue.YAMLSyntaxError(this, `Invalid escape sequence ${src.substr(offset - 2, length + 2)}`));
+      return src.substr(offset - 2, length + 2);
+    }
+
+    return String.fromCodePoint(code);
+  }
+  /**
+   * Parses a "double quoted" value from the source
+   *
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this scalar
+   */
+
+
+  parse(context, start) {
+    this.context = context;
+    const {
+      src
+    } = context;
+    let offset = QuoteDouble.endOfQuote(src, start + 1);
+    this.valueRange = new PlainValue.Range(start, offset);
+    offset = PlainValue.Node.endOfWhiteSpace(src, offset);
+    offset = this.parseComment(offset);
+    return offset;
+  }
+
+}
+
+class QuoteSingle extends PlainValue.Node {
+  static endOfQuote(src, offset) {
+    let ch = src[offset];
+
+    while (ch) {
+      if (ch === "'") {
+        if (src[offset + 1] !== "'") break;
+        ch = src[offset += 2];
+      } else {
+        ch = src[offset += 1];
+      }
+    }
+
+    return offset + 1;
+  }
+  /**
+   * @returns {string | { str: string, errors: YAMLSyntaxError[] }}
+   */
+
+
+  get strValue() {
+    if (!this.valueRange || !this.context) return null;
+    const errors = [];
+    const {
+      start,
+      end
+    } = this.valueRange;
+    const {
+      indent,
+      src
+    } = this.context;
+    if (src[end - 1] !== "'") errors.push(new PlainValue.YAMLSyntaxError(this, "Missing closing 'quote"));
+    let str = '';
+
+    for (let i = start + 1; i < end - 1; ++i) {
+      const ch = src[i];
+
+      if (ch === '\n') {
+        if (PlainValue.Node.atDocumentBoundary(src, i + 1)) errors.push(new PlainValue.YAMLSemanticError(this, 'Document boundary indicators are not allowed within string values'));
+        const {
+          fold,
+          offset,
+          error
+        } = PlainValue.Node.foldNewline(src, i, indent);
+        str += fold;
+        i = offset;
+        if (error) errors.push(new PlainValue.YAMLSemanticError(this, 'Multi-line single-quoted string needs to be sufficiently indented'));
+      } else if (ch === "'") {
+        str += ch;
+        i += 1;
+        if (src[i] !== "'") errors.push(new PlainValue.YAMLSyntaxError(this, 'Unescaped single quote? This should not happen.'));
+      } else if (ch === ' ' || ch === '\t') {
+        // trim trailing whitespace
+        const wsStart = i;
+        let next = src[i + 1];
+
+        while (next === ' ' || next === '\t') {
+          i += 1;
+          next = src[i + 1];
+        }
+
+        if (next !== '\n') str += i > wsStart ? src.slice(wsStart, i + 1) : ch;
+      } else {
+        str += ch;
+      }
+    }
+
+    return errors.length > 0 ? {
+      errors,
+      str
+    } : str;
+  }
+  /**
+   * Parses a 'single quoted' value from the source
+   *
+   * @param {ParseContext} context
+   * @param {number} start - Index of first character
+   * @returns {number} - Index of the character after this scalar
+   */
+
+
+  parse(context, start) {
+    this.context = context;
+    const {
+      src
+    } = context;
+    let offset = QuoteSingle.endOfQuote(src, start + 1);
+    this.valueRange = new PlainValue.Range(start, offset);
+    offset = PlainValue.Node.endOfWhiteSpace(src, offset);
+    offset = this.parseComment(offset);
+    return offset;
+  }
+
+}
+
+function createNewNode(type, props) {
+  switch (type) {
+    case PlainValue.Type.ALIAS:
+      return new Alias(type, props);
+
+    case PlainValue.Type.BLOCK_FOLDED:
+    case PlainValue.Type.BLOCK_LITERAL:
+      return new BlockValue(type, props);
+
+    case PlainValue.Type.FLOW_MAP:
+    case PlainValue.Type.FLOW_SEQ:
+      return new FlowCollection(type, props);
+
+    case PlainValue.Type.MAP_KEY:
+    case PlainValue.Type.MAP_VALUE:
+    case PlainValue.Type.SEQ_ITEM:
+      return new CollectionItem(type, props);
+
+    case PlainValue.Type.COMMENT:
+    case PlainValue.Type.PLAIN:
+      return new PlainValue.PlainValue(type, props);
+
+    case PlainValue.Type.QUOTE_DOUBLE:
+      return new QuoteDouble(type, props);
+
+    case PlainValue.Type.QUOTE_SINGLE:
+      return new QuoteSingle(type, props);
+
+    /* istanbul ignore next */
+
+    default:
+      return null;
+    // should never happen
+  }
+}
+/**
+ * @param {boolean} atLineStart - Node starts at beginning of line
+ * @param {boolean} inFlow - true if currently in a flow context
+ * @param {boolean} inCollection - true if currently in a collection context
+ * @param {number} indent - Current level of indentation
+ * @param {number} lineStart - Start of the current line
+ * @param {Node} parent - The parent of the node
+ * @param {string} src - Source of the YAML document
+ */
+
+
+class ParseContext {
+  static parseType(src, offset, inFlow) {
+    switch (src[offset]) {
+      case '*':
+        return PlainValue.Type.ALIAS;
+
+      case '>':
+        return PlainValue.Type.BLOCK_FOLDED;
+
+      case '|':
+        return PlainValue.Type.BLOCK_LITERAL;
+
+      case '{':
+        return PlainValue.Type.FLOW_MAP;
+
+      case '[':
+        return PlainValue.Type.FLOW_SEQ;
+
+      case '?':
+        return !inFlow && PlainValue.Node.atBlank(src, offset + 1, true) ? PlainValue.Type.MAP_KEY : PlainValue.Type.PLAIN;
+
+      case ':':
+        return !inFlow && PlainValue.Node.atBlank(src, offset + 1, true) ? PlainValue.Type.MAP_VALUE : PlainValue.Type.PLAIN;
+
+      case '-':
+        return !inFlow && PlainValue.Node.atBlank(src, offset + 1, true) ? PlainValue.Type.SEQ_ITEM : PlainValue.Type.PLAIN;
+
+      case '"':
+        return PlainValue.Type.QUOTE_DOUBLE;
+
+      case "'":
+        return PlainValue.Type.QUOTE_SINGLE;
+
+      default:
+        return PlainValue.Type.PLAIN;
+    }
+  }
+
+  constructor(orig = {}, {
+    atLineStart,
+    inCollection,
+    inFlow,
+    indent,
+    lineStart,
+    parent
+  } = {}) {
+    PlainValue._defineProperty(this, "parseNode", (overlay, start) => {
+      if (PlainValue.Node.atDocumentBoundary(this.src, start)) return null;
+      const context = new ParseContext(this, overlay);
+      const {
+        props,
+        type,
+        valueStart
+      } = context.parseProps(start);
+      const node = createNewNode(type, props);
+      let offset = node.parse(context, valueStart);
+      node.range = new PlainValue.Range(start, offset);
+      /* istanbul ignore if */
+
+      if (offset <= start) {
+        // This should never happen, but if it does, let's make sure to at least
+        // step one character forward to avoid a busy loop.
+        node.error = new Error(`Node#parse consumed no characters`);
+        node.error.parseEnd = offset;
+        node.error.source = node;
+        node.range.end = start + 1;
+      }
+
+      if (context.nodeStartsCollection(node)) {
+        if (!node.error && !context.atLineStart && context.parent.type === PlainValue.Type.DOCUMENT) {
+          node.error = new PlainValue.YAMLSyntaxError(node, 'Block collection must not have preceding content here (e.g. directives-end indicator)');
+        }
+
+        const collection = new Collection(node);
+        offset = collection.parse(new ParseContext(context), offset);
+        collection.range = new PlainValue.Range(start, offset);
+        return collection;
+      }
+
+      return node;
+    });
+
+    this.atLineStart = atLineStart != null ? atLineStart : orig.atLineStart || false;
+    this.inCollection = inCollection != null ? inCollection : orig.inCollection || false;
+    this.inFlow = inFlow != null ? inFlow : orig.inFlow || false;
+    this.indent = indent != null ? indent : orig.indent;
+    this.lineStart = lineStart != null ? lineStart : orig.lineStart;
+    this.parent = parent != null ? parent : orig.parent || {};
+    this.root = orig.root;
+    this.src = orig.src;
+  }
+
+  nodeStartsCollection(node) {
+    const {
+      inCollection,
+      inFlow,
+      src
+    } = this;
+    if (inCollection || inFlow) return false;
+    if (node instanceof CollectionItem) return true; // check for implicit key
+
+    let offset = node.range.end;
+    if (src[offset] === '\n' || src[offset - 1] === '\n') return false;
+    offset = PlainValue.Node.endOfWhiteSpace(src, offset);
+    return src[offset] === ':';
+  } // Anchor and tag are before type, which determines the node implementation
+  // class; hence this intermediate step.
+
+
+  parseProps(offset) {
+    const {
+      inFlow,
+      parent,
+      src
+    } = this;
+    const props = [];
+    let lineHasProps = false;
+    offset = this.atLineStart ? PlainValue.Node.endOfIndent(src, offset) : PlainValue.Node.endOfWhiteSpace(src, offset);
+    let ch = src[offset];
+
+    while (ch === PlainValue.Char.ANCHOR || ch === PlainValue.Char.COMMENT || ch === PlainValue.Char.TAG || ch === '\n') {
+      if (ch === '\n') {
+        let inEnd = offset;
+        let lineStart;
+
+        do {
+          lineStart = inEnd + 1;
+          inEnd = PlainValue.Node.endOfIndent(src, lineStart);
+        } while (src[inEnd] === '\n');
+
+        const indentDiff = inEnd - (lineStart + this.indent);
+        const noIndicatorAsIndent = parent.type === PlainValue.Type.SEQ_ITEM && parent.context.atLineStart;
+        if (src[inEnd] !== '#' && !PlainValue.Node.nextNodeIsIndented(src[inEnd], indentDiff, !noIndicatorAsIndent)) break;
+        this.atLineStart = true;
+        this.lineStart = lineStart;
+        lineHasProps = false;
+        offset = inEnd;
+      } else if (ch === PlainValue.Char.COMMENT) {
+        const end = PlainValue.Node.endOfLine(src, offset + 1);
+        props.push(new PlainValue.Range(offset, end));
+        offset = end;
+      } else {
+        let end = PlainValue.Node.endOfIdentifier(src, offset + 1);
+
+        if (ch === PlainValue.Char.TAG && src[end] === ',' && /^[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+,\d\d\d\d(-\d\d){0,2}\/\S/.test(src.slice(offset + 1, end + 13))) {
+          // Let's presume we're dealing with a YAML 1.0 domain tag here, rather
+          // than an empty but 'foo.bar' private-tagged node in a flow collection
+          // followed without whitespace by a plain string starting with a year
+          // or date divided by something.
+          end = PlainValue.Node.endOfIdentifier(src, end + 5);
+        }
+
+        props.push(new PlainValue.Range(offset, end));
+        lineHasProps = true;
+        offset = PlainValue.Node.endOfWhiteSpace(src, end);
+      }
+
+      ch = src[offset];
+    } // '- &a : b' has an anchor on an empty node
+
+
+    if (lineHasProps && ch === ':' && PlainValue.Node.atBlank(src, offset + 1, true)) offset -= 1;
+    const type = ParseContext.parseType(src, offset, inFlow);
+    return {
+      props,
+      type,
+      valueStart: offset
+    };
+  }
+  /**
+   * Parses a node from the source
+   * @param {ParseContext} overlay
+   * @param {number} start - Index of first non-whitespace character for the node
+   * @returns {?Node} - null if at a document boundary
+   */
+
+
+}
+
+// Published as 'yaml/parse-cst'
+function parse(src) {
+  const cr = [];
+
+  if (src.indexOf('\r') !== -1) {
+    src = src.replace(/\r\n?/g, (match, offset) => {
+      if (match.length > 1) cr.push(offset);
+      return '\n';
+    });
+  }
+
+  const documents = [];
+  let offset = 0;
+
+  do {
+    const doc = new Document();
+    const context = new ParseContext({
+      src
+    });
+    offset = doc.parse(context, offset);
+    documents.push(doc);
+  } while (offset < src.length);
+
+  documents.setOrigRanges = () => {
+    if (cr.length === 0) return false;
+
+    for (let i = 1; i < cr.length; ++i) cr[i] -= i;
+
+    let crOffset = 0;
+
+    for (let i = 0; i < documents.length; ++i) {
+      crOffset = documents[i].setOrigRanges(cr, crOffset);
+    }
+
+    cr.splice(0, cr.length);
+    return true;
+  };
+
+  documents.toString = () => documents.join('...\n');
+
+  return documents;
+}
+
+exports.parse = parse;
+
+
+/***/ }),
+
+/***/ 2462:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+
+var PlainValue = __nccwpck_require__(3343);
+
+function addCommentBefore(str, indent, comment) {
+  if (!comment) return str;
+  const cc = comment.replace(/[\s\S]^/gm, `$&${indent}#`);
+  return `#${cc}\n${indent}${str}`;
+}
+function addComment(str, indent, comment) {
+  return !comment ? str : comment.indexOf('\n') === -1 ? `${str} #${comment}` : `${str}\n` + comment.replace(/^/gm, `${indent || ''}#`);
+}
+
+class Node {}
+
+function toJSON(value, arg, ctx) {
+  if (Array.isArray(value)) return value.map((v, i) => toJSON(v, String(i), ctx));
+
+  if (value && typeof value.toJSON === 'function') {
+    const anchor = ctx && ctx.anchors && ctx.anchors.get(value);
+    if (anchor) ctx.onCreate = res => {
+      anchor.res = res;
+      delete ctx.onCreate;
+    };
+    const res = value.toJSON(arg, ctx);
+    if (anchor && ctx.onCreate) ctx.onCreate(res);
+    return res;
+  }
+
+  if ((!ctx || !ctx.keep) && typeof value === 'bigint') return Number(value);
+  return value;
+}
+
+class Scalar extends Node {
+  constructor(value) {
+    super();
+    this.value = value;
+  }
+
+  toJSON(arg, ctx) {
+    return ctx && ctx.keep ? this.value : toJSON(this.value, arg, ctx);
+  }
+
+  toString() {
+    return String(this.value);
+  }
+
+}
+
+function collectionFromPath(schema, path, value) {
+  let v = value;
+
+  for (let i = path.length - 1; i >= 0; --i) {
+    const k = path[i];
+
+    if (Number.isInteger(k) && k >= 0) {
+      const a = [];
+      a[k] = v;
+      v = a;
+    } else {
+      const o = {};
+      Object.defineProperty(o, k, {
+        value: v,
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });
+      v = o;
+    }
+  }
+
+  return schema.createNode(v, false);
+} // null, undefined, or an empty non-string iterable (e.g. [])
+
+
+const isEmptyPath = path => path == null || typeof path === 'object' && path[Symbol.iterator]().next().done;
+class Collection extends Node {
+  constructor(schema) {
+    super();
+
+    PlainValue._defineProperty(this, "items", []);
+
+    this.schema = schema;
+  }
+
+  addIn(path, value) {
+    if (isEmptyPath(path)) this.add(value);else {
+      const [key, ...rest] = path;
+      const node = this.get(key, true);
+      if (node instanceof Collection) node.addIn(rest, value);else if (node === undefined && this.schema) this.set(key, collectionFromPath(this.schema, rest, value));else throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+    }
+  }
+
+  deleteIn([key, ...rest]) {
+    if (rest.length === 0) return this.delete(key);
+    const node = this.get(key, true);
+    if (node instanceof Collection) return node.deleteIn(rest);else throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+  }
+
+  getIn([key, ...rest], keepScalar) {
+    const node = this.get(key, true);
+    if (rest.length === 0) return !keepScalar && node instanceof Scalar ? node.value : node;else return node instanceof Collection ? node.getIn(rest, keepScalar) : undefined;
+  }
+
+  hasAllNullValues() {
+    return this.items.every(node => {
+      if (!node || node.type !== 'PAIR') return false;
+      const n = node.value;
+      return n == null || n instanceof Scalar && n.value == null && !n.commentBefore && !n.comment && !n.tag;
+    });
+  }
+
+  hasIn([key, ...rest]) {
+    if (rest.length === 0) return this.has(key);
+    const node = this.get(key, true);
+    return node instanceof Collection ? node.hasIn(rest) : false;
+  }
+
+  setIn([key, ...rest], value) {
+    if (rest.length === 0) {
+      this.set(key, value);
+    } else {
+      const node = this.get(key, true);
+      if (node instanceof Collection) node.setIn(rest, value);else if (node === undefined && this.schema) this.set(key, collectionFromPath(this.schema, rest, value));else throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
+    }
+  } // overridden in implementations
+
+  /* istanbul ignore next */
+
+
+  toJSON() {
+    return null;
+  }
+
+  toString(ctx, {
+    blockItem,
+    flowChars,
+    isMap,
+    itemIndent
+  }, onComment, onChompKeep) {
+    const {
+      indent,
+      indentStep,
+      stringify
+    } = ctx;
+    const inFlow = this.type === PlainValue.Type.FLOW_MAP || this.type === PlainValue.Type.FLOW_SEQ || ctx.inFlow;
+    if (inFlow) itemIndent += indentStep;
+    const allNullValues = isMap && this.hasAllNullValues();
+    ctx = Object.assign({}, ctx, {
+      allNullValues,
+      indent: itemIndent,
+      inFlow,
+      type: null
+    });
+    let chompKeep = false;
+    let hasItemWithNewLine = false;
+    const nodes = this.items.reduce((nodes, item, i) => {
+      let comment;
+
+      if (item) {
+        if (!chompKeep && item.spaceBefore) nodes.push({
+          type: 'comment',
+          str: ''
+        });
+        if (item.commentBefore) item.commentBefore.match(/^.*$/gm).forEach(line => {
+          nodes.push({
+            type: 'comment',
+            str: `#${line}`
+          });
+        });
+        if (item.comment) comment = item.comment;
+        if (inFlow && (!chompKeep && item.spaceBefore || item.commentBefore || item.comment || item.key && (item.key.commentBefore || item.key.comment) || item.value && (item.value.commentBefore || item.value.comment))) hasItemWithNewLine = true;
+      }
+
+      chompKeep = false;
+      let str = stringify(item, ctx, () => comment = null, () => chompKeep = true);
+      if (inFlow && !hasItemWithNewLine && str.includes('\n')) hasItemWithNewLine = true;
+      if (inFlow && i < this.items.length - 1) str += ',';
+      str = addComment(str, itemIndent, comment);
+      if (chompKeep && (comment || inFlow)) chompKeep = false;
+      nodes.push({
+        type: 'item',
+        str
+      });
+      return nodes;
+    }, []);
+    let str;
+
+    if (nodes.length === 0) {
+      str = flowChars.start + flowChars.end;
+    } else if (inFlow) {
+      const {
+        start,
+        end
+      } = flowChars;
+      const strings = nodes.map(n => n.str);
+
+      if (hasItemWithNewLine || strings.reduce((sum, str) => sum + str.length + 2, 2) > Collection.maxFlowStringSingleLineLength) {
+        str = start;
+
+        for (const s of strings) {
+          str += s ? `\n${indentStep}${indent}${s}` : '\n';
+        }
+
+        str += `\n${indent}${end}`;
+      } else {
+        str = `${start} ${strings.join(' ')} ${end}`;
+      }
+    } else {
+      const strings = nodes.map(blockItem);
+      str = strings.shift();
+
+      for (const s of strings) str += s ? `\n${indent}${s}` : '\n';
+    }
+
+    if (this.comment) {
+      str += '\n' + this.comment.replace(/^/gm, `${indent}#`);
+      if (onComment) onComment();
+    } else if (chompKeep && onChompKeep) onChompKeep();
+
+    return str;
+  }
+
+}
+
+PlainValue._defineProperty(Collection, "maxFlowStringSingleLineLength", 60);
+
+function asItemIndex(key) {
+  let idx = key instanceof Scalar ? key.value : key;
+  if (idx && typeof idx === 'string') idx = Number(idx);
+  return Number.isInteger(idx) && idx >= 0 ? idx : null;
+}
+
+class YAMLSeq extends Collection {
+  add(value) {
+    this.items.push(value);
+  }
+
+  delete(key) {
+    const idx = asItemIndex(key);
+    if (typeof idx !== 'number') return false;
+    const del = this.items.splice(idx, 1);
+    return del.length > 0;
+  }
+
+  get(key, keepScalar) {
+    const idx = asItemIndex(key);
+    if (typeof idx !== 'number') return undefined;
+    const it = this.items[idx];
+    return !keepScalar && it instanceof Scalar ? it.value : it;
+  }
+
+  has(key) {
+    const idx = asItemIndex(key);
+    return typeof idx === 'number' && idx < this.items.length;
+  }
+
+  set(key, value) {
+    const idx = asItemIndex(key);
+    if (typeof idx !== 'number') throw new Error(`Expected a valid index, not ${key}.`);
+    this.items[idx] = value;
+  }
+
+  toJSON(_, ctx) {
+    const seq = [];
+    if (ctx && ctx.onCreate) ctx.onCreate(seq);
+    let i = 0;
+
+    for (const item of this.items) seq.push(toJSON(item, String(i++), ctx));
+
+    return seq;
+  }
+
+  toString(ctx, onComment, onChompKeep) {
+    if (!ctx) return JSON.stringify(this);
+    return super.toString(ctx, {
+      blockItem: n => n.type === 'comment' ? n.str : `- ${n.str}`,
+      flowChars: {
+        start: '[',
+        end: ']'
+      },
+      isMap: false,
+      itemIndent: (ctx.indent || '') + '  '
+    }, onComment, onChompKeep);
+  }
+
+}
+
+const stringifyKey = (key, jsKey, ctx) => {
+  if (jsKey === null) return '';
+  if (typeof jsKey !== 'object') return String(jsKey);
+  if (key instanceof Node && ctx && ctx.doc) return key.toString({
+    anchors: Object.create(null),
+    doc: ctx.doc,
+    indent: '',
+    indentStep: ctx.indentStep,
+    inFlow: true,
+    inStringifyKey: true,
+    stringify: ctx.stringify
+  });
+  return JSON.stringify(jsKey);
+};
+
+class Pair extends Node {
+  constructor(key, value = null) {
+    super();
+    this.key = key;
+    this.value = value;
+    this.type = Pair.Type.PAIR;
+  }
+
+  get commentBefore() {
+    return this.key instanceof Node ? this.key.commentBefore : undefined;
+  }
+
+  set commentBefore(cb) {
+    if (this.key == null) this.key = new Scalar(null);
+    if (this.key instanceof Node) this.key.commentBefore = cb;else {
+      const msg = 'Pair.commentBefore is an alias for Pair.key.commentBefore. To set it, the key must be a Node.';
+      throw new Error(msg);
+    }
+  }
+
+  addToJSMap(ctx, map) {
+    const key = toJSON(this.key, '', ctx);
+
+    if (map instanceof Map) {
+      const value = toJSON(this.value, key, ctx);
+      map.set(key, value);
+    } else if (map instanceof Set) {
+      map.add(key);
+    } else {
+      const stringKey = stringifyKey(this.key, key, ctx);
+      const value = toJSON(this.value, stringKey, ctx);
+      if (stringKey in map) Object.defineProperty(map, stringKey, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });else map[stringKey] = value;
+    }
+
+    return map;
+  }
+
+  toJSON(_, ctx) {
+    const pair = ctx && ctx.mapAsMap ? new Map() : {};
+    return this.addToJSMap(ctx, pair);
+  }
+
+  toString(ctx, onComment, onChompKeep) {
+    if (!ctx || !ctx.doc) return JSON.stringify(this);
+    const {
+      indent: indentSize,
+      indentSeq,
+      simpleKeys
+    } = ctx.doc.options;
+    let {
+      key,
+      value
+    } = this;
+    let keyComment = key instanceof Node && key.comment;
+
+    if (simpleKeys) {
+      if (keyComment) {
+        throw new Error('With simple keys, key nodes cannot have comments');
+      }
+
+      if (key instanceof Collection) {
+        const msg = 'With simple keys, collection cannot be used as a key value';
+        throw new Error(msg);
+      }
+    }
+
+    let explicitKey = !simpleKeys && (!key || keyComment || (key instanceof Node ? key instanceof Collection || key.type === PlainValue.Type.BLOCK_FOLDED || key.type === PlainValue.Type.BLOCK_LITERAL : typeof key === 'object'));
+    const {
+      doc,
+      indent,
+      indentStep,
+      stringify
+    } = ctx;
+    ctx = Object.assign({}, ctx, {
+      implicitKey: !explicitKey,
+      indent: indent + indentStep
+    });
+    let chompKeep = false;
+    let str = stringify(key, ctx, () => keyComment = null, () => chompKeep = true);
+    str = addComment(str, ctx.indent, keyComment);
+
+    if (!explicitKey && str.length > 1024) {
+      if (simpleKeys) throw new Error('With simple keys, single line scalar must not span more than 1024 characters');
+      explicitKey = true;
+    }
+
+    if (ctx.allNullValues && !simpleKeys) {
+      if (this.comment) {
+        str = addComment(str, ctx.indent, this.comment);
+        if (onComment) onComment();
+      } else if (chompKeep && !keyComment && onChompKeep) onChompKeep();
+
+      return ctx.inFlow && !explicitKey ? str : `? ${str}`;
+    }
+
+    str = explicitKey ? `? ${str}\n${indent}:` : `${str}:`;
+
+    if (this.comment) {
+      // expected (but not strictly required) to be a single-line comment
+      str = addComment(str, ctx.indent, this.comment);
+      if (onComment) onComment();
+    }
+
+    let vcb = '';
+    let valueComment = null;
+
+    if (value instanceof Node) {
+      if (value.spaceBefore) vcb = '\n';
+
+      if (value.commentBefore) {
+        const cs = value.commentBefore.replace(/^/gm, `${ctx.indent}#`);
+        vcb += `\n${cs}`;
+      }
+
+      valueComment = value.comment;
+    } else if (value && typeof value === 'object') {
+      value = doc.schema.createNode(value, true);
+    }
+
+    ctx.implicitKey = false;
+    if (!explicitKey && !this.comment && value instanceof Scalar) ctx.indentAtStart = str.length + 1;
+    chompKeep = false;
+
+    if (!indentSeq && indentSize >= 2 && !ctx.inFlow && !explicitKey && value instanceof YAMLSeq && value.type !== PlainValue.Type.FLOW_SEQ && !value.tag && !doc.anchors.getName(value)) {
+      // If indentSeq === false, consider '- ' as part of indentation where possible
+      ctx.indent = ctx.indent.substr(2);
+    }
+
+    const valueStr = stringify(value, ctx, () => valueComment = null, () => chompKeep = true);
+    let ws = ' ';
+
+    if (vcb || this.comment) {
+      ws = `${vcb}\n${ctx.indent}`;
+    } else if (!explicitKey && value instanceof Collection) {
+      const flow = valueStr[0] === '[' || valueStr[0] === '{';
+      if (!flow || valueStr.includes('\n')) ws = `\n${ctx.indent}`;
+    } else if (valueStr[0] === '\n') ws = '';
+
+    if (chompKeep && !valueComment && onChompKeep) onChompKeep();
+    return addComment(str + ws + valueStr, ctx.indent, valueComment);
+  }
+
+}
+
+PlainValue._defineProperty(Pair, "Type", {
+  PAIR: 'PAIR',
+  MERGE_PAIR: 'MERGE_PAIR'
+});
+
+const getAliasCount = (node, anchors) => {
+  if (node instanceof Alias) {
+    const anchor = anchors.get(node.source);
+    return anchor.count * anchor.aliasCount;
+  } else if (node instanceof Collection) {
+    let count = 0;
+
+    for (const item of node.items) {
+      const c = getAliasCount(item, anchors);
+      if (c > count) count = c;
+    }
+
+    return count;
+  } else if (node instanceof Pair) {
+    const kc = getAliasCount(node.key, anchors);
+    const vc = getAliasCount(node.value, anchors);
+    return Math.max(kc, vc);
+  }
+
+  return 1;
+};
+
+class Alias extends Node {
+  static stringify({
+    range,
+    source
+  }, {
+    anchors,
+    doc,
+    implicitKey,
+    inStringifyKey
+  }) {
+    let anchor = Object.keys(anchors).find(a => anchors[a] === source);
+    if (!anchor && inStringifyKey) anchor = doc.anchors.getName(source) || doc.anchors.newName();
+    if (anchor) return `*${anchor}${implicitKey ? ' ' : ''}`;
+    const msg = doc.anchors.getName(source) ? 'Alias node must be after source node' : 'Source node not found for alias node';
+    throw new Error(`${msg} [${range}]`);
+  }
+
+  constructor(source) {
+    super();
+    this.source = source;
+    this.type = PlainValue.Type.ALIAS;
+  }
+
+  set tag(t) {
+    throw new Error('Alias nodes cannot have tags');
+  }
+
+  toJSON(arg, ctx) {
+    if (!ctx) return toJSON(this.source, arg, ctx);
+    const {
+      anchors,
+      maxAliasCount
+    } = ctx;
+    const anchor = anchors.get(this.source);
+    /* istanbul ignore if */
+
+    if (!anchor || anchor.res === undefined) {
+      const msg = 'This should not happen: Alias anchor was not resolved?';
+      if (this.cstNode) throw new PlainValue.YAMLReferenceError(this.cstNode, msg);else throw new ReferenceError(msg);
+    }
+
+    if (maxAliasCount >= 0) {
+      anchor.count += 1;
+      if (anchor.aliasCount === 0) anchor.aliasCount = getAliasCount(this.source, anchors);
+
+      if (anchor.count * anchor.aliasCount > maxAliasCount) {
+        const msg = 'Excessive alias count indicates a resource exhaustion attack';
+        if (this.cstNode) throw new PlainValue.YAMLReferenceError(this.cstNode, msg);else throw new ReferenceError(msg);
+      }
+    }
+
+    return anchor.res;
+  } // Only called when stringifying an alias mapping key while constructing
+  // Object output.
+
+
+  toString(ctx) {
+    return Alias.stringify(this, ctx);
+  }
+
+}
+
+PlainValue._defineProperty(Alias, "default", true);
+
+function findPair(items, key) {
+  const k = key instanceof Scalar ? key.value : key;
+
+  for (const it of items) {
+    if (it instanceof Pair) {
+      if (it.key === key || it.key === k) return it;
+      if (it.key && it.key.value === k) return it;
+    }
+  }
+
+  return undefined;
+}
+class YAMLMap extends Collection {
+  add(pair, overwrite) {
+    if (!pair) pair = new Pair(pair);else if (!(pair instanceof Pair)) pair = new Pair(pair.key || pair, pair.value);
+    const prev = findPair(this.items, pair.key);
+    const sortEntries = this.schema && this.schema.sortMapEntries;
+
+    if (prev) {
+      if (overwrite) prev.value = pair.value;else throw new Error(`Key ${pair.key} already set`);
+    } else if (sortEntries) {
+      const i = this.items.findIndex(item => sortEntries(pair, item) < 0);
+      if (i === -1) this.items.push(pair);else this.items.splice(i, 0, pair);
+    } else {
+      this.items.push(pair);
+    }
+  }
+
+  delete(key) {
+    const it = findPair(this.items, key);
+    if (!it) return false;
+    const del = this.items.splice(this.items.indexOf(it), 1);
+    return del.length > 0;
+  }
+
+  get(key, keepScalar) {
+    const it = findPair(this.items, key);
+    const node = it && it.value;
+    return !keepScalar && node instanceof Scalar ? node.value : node;
+  }
+
+  has(key) {
+    return !!findPair(this.items, key);
+  }
+
+  set(key, value) {
+    this.add(new Pair(key, value), true);
+  }
+  /**
+   * @param {*} arg ignored
+   * @param {*} ctx Conversion context, originally set in Document#toJSON()
+   * @param {Class} Type If set, forces the returned collection type
+   * @returns {*} Instance of Type, Map, or Object
+   */
+
+
+  toJSON(_, ctx, Type) {
+    const map = Type ? new Type() : ctx && ctx.mapAsMap ? new Map() : {};
+    if (ctx && ctx.onCreate) ctx.onCreate(map);
+
+    for (const item of this.items) item.addToJSMap(ctx, map);
+
+    return map;
+  }
+
+  toString(ctx, onComment, onChompKeep) {
+    if (!ctx) return JSON.stringify(this);
+
+    for (const item of this.items) {
+      if (!(item instanceof Pair)) throw new Error(`Map items must all be pairs; found ${JSON.stringify(item)} instead`);
+    }
+
+    return super.toString(ctx, {
+      blockItem: n => n.str,
+      flowChars: {
+        start: '{',
+        end: '}'
+      },
+      isMap: true,
+      itemIndent: ctx.indent || ''
+    }, onComment, onChompKeep);
+  }
+
+}
+
+const MERGE_KEY = '<<';
+class Merge extends Pair {
+  constructor(pair) {
+    if (pair instanceof Pair) {
+      let seq = pair.value;
+
+      if (!(seq instanceof YAMLSeq)) {
+        seq = new YAMLSeq();
+        seq.items.push(pair.value);
+        seq.range = pair.value.range;
+      }
+
+      super(pair.key, seq);
+      this.range = pair.range;
+    } else {
+      super(new Scalar(MERGE_KEY), new YAMLSeq());
+    }
+
+    this.type = Pair.Type.MERGE_PAIR;
+  } // If the value associated with a merge key is a single mapping node, each of
+  // its key/value pairs is inserted into the current mapping, unless the key
+  // already exists in it. If the value associated with the merge key is a
+  // sequence, then this sequence is expected to contain mapping nodes and each
+  // of these nodes is merged in turn according to its order in the sequence.
+  // Keys in mapping nodes earlier in the sequence override keys specified in
+  // later mapping nodes. -- http://yaml.org/type/merge.html
+
+
+  addToJSMap(ctx, map) {
+    for (const {
+      source
+    } of this.value.items) {
+      if (!(source instanceof YAMLMap)) throw new Error('Merge sources must be maps');
+      const srcMap = source.toJSON(null, ctx, Map);
+
+      for (const [key, value] of srcMap) {
+        if (map instanceof Map) {
+          if (!map.has(key)) map.set(key, value);
+        } else if (map instanceof Set) {
+          map.add(key);
+        } else if (!Object.prototype.hasOwnProperty.call(map, key)) {
+          Object.defineProperty(map, key, {
+            value,
+            writable: true,
+            enumerable: true,
+            configurable: true
+          });
+        }
+      }
+    }
+
+    return map;
+  }
+
+  toString(ctx, onComment) {
+    const seq = this.value;
+    if (seq.items.length > 1) return super.toString(ctx, onComment);
+    this.value = seq.items[0];
+    const str = super.toString(ctx, onComment);
+    this.value = seq;
+    return str;
+  }
+
+}
+
+const binaryOptions = {
+  defaultType: PlainValue.Type.BLOCK_LITERAL,
+  lineWidth: 76
+};
+const boolOptions = {
+  trueStr: 'true',
+  falseStr: 'false'
+};
+const intOptions = {
+  asBigInt: false
+};
+const nullOptions = {
+  nullStr: 'null'
+};
+const strOptions = {
+  defaultType: PlainValue.Type.PLAIN,
+  doubleQuoted: {
+    jsonEncoding: false,
+    minMultiLineLength: 40
+  },
+  fold: {
+    lineWidth: 80,
+    minContentWidth: 20
+  }
+};
+
+function resolveScalar(str, tags, scalarFallback) {
+  for (const {
+    format,
+    test,
+    resolve
+  } of tags) {
+    if (test) {
+      const match = str.match(test);
+
+      if (match) {
+        let res = resolve.apply(null, match);
+        if (!(res instanceof Scalar)) res = new Scalar(res);
+        if (format) res.format = format;
+        return res;
+      }
+    }
+  }
+
+  if (scalarFallback) str = scalarFallback(str);
+  return new Scalar(str);
+}
+
+const FOLD_FLOW = 'flow';
+const FOLD_BLOCK = 'block';
+const FOLD_QUOTED = 'quoted'; // presumes i+1 is at the start of a line
+// returns index of last newline in more-indented block
+
+const consumeMoreIndentedLines = (text, i) => {
+  let ch = text[i + 1];
+
+  while (ch === ' ' || ch === '\t') {
+    do {
+      ch = text[i += 1];
+    } while (ch && ch !== '\n');
+
+    ch = text[i + 1];
+  }
+
+  return i;
+};
+/**
+ * Tries to keep input at up to `lineWidth` characters, splitting only on spaces
+ * not followed by newlines or spaces unless `mode` is `'quoted'`. Lines are
+ * terminated with `\n` and started with `indent`.
+ *
+ * @param {string} text
+ * @param {string} indent
+ * @param {string} [mode='flow'] `'block'` prevents more-indented lines
+ *   from being folded; `'quoted'` allows for `\` escapes, including escaped
+ *   newlines
+ * @param {Object} options
+ * @param {number} [options.indentAtStart] Accounts for leading contents on
+ *   the first line, defaulting to `indent.length`
+ * @param {number} [options.lineWidth=80]
+ * @param {number} [options.minContentWidth=20] Allow highly indented lines to
+ *   stretch the line width or indent content from the start
+ * @param {function} options.onFold Called once if the text is folded
+ * @param {function} options.onFold Called once if any line of text exceeds
+ *   lineWidth characters
+ */
+
+
+function foldFlowLines(text, indent, mode, {
+  indentAtStart,
+  lineWidth = 80,
+  minContentWidth = 20,
+  onFold,
+  onOverflow
+}) {
+  if (!lineWidth || lineWidth < 0) return text;
+  const endStep = Math.max(1 + minContentWidth, 1 + lineWidth - indent.length);
+  if (text.length <= endStep) return text;
+  const folds = [];
+  const escapedFolds = {};
+  let end = lineWidth - indent.length;
+
+  if (typeof indentAtStart === 'number') {
+    if (indentAtStart > lineWidth - Math.max(2, minContentWidth)) folds.push(0);else end = lineWidth - indentAtStart;
+  }
+
+  let split = undefined;
+  let prev = undefined;
+  let overflow = false;
+  let i = -1;
+  let escStart = -1;
+  let escEnd = -1;
+
+  if (mode === FOLD_BLOCK) {
+    i = consumeMoreIndentedLines(text, i);
+    if (i !== -1) end = i + endStep;
+  }
+
+  for (let ch; ch = text[i += 1];) {
+    if (mode === FOLD_QUOTED && ch === '\\') {
+      escStart = i;
+
+      switch (text[i + 1]) {
+        case 'x':
+          i += 3;
+          break;
+
+        case 'u':
+          i += 5;
+          break;
+
+        case 'U':
+          i += 9;
+          break;
+
+        default:
+          i += 1;
+      }
+
+      escEnd = i;
+    }
+
+    if (ch === '\n') {
+      if (mode === FOLD_BLOCK) i = consumeMoreIndentedLines(text, i);
+      end = i + endStep;
+      split = undefined;
+    } else {
+      if (ch === ' ' && prev && prev !== ' ' && prev !== '\n' && prev !== '\t') {
+        // space surrounded by non-space can be replaced with newline + indent
+        const next = text[i + 1];
+        if (next && next !== ' ' && next !== '\n' && next !== '\t') split = i;
+      }
+
+      if (i >= end) {
+        if (split) {
+          folds.push(split);
+          end = split + endStep;
+          split = undefined;
+        } else if (mode === FOLD_QUOTED) {
+          // white-space collected at end may stretch past lineWidth
+          while (prev === ' ' || prev === '\t') {
+            prev = ch;
+            ch = text[i += 1];
+            overflow = true;
+          } // Account for newline escape, but don't break preceding escape
+
+
+          const j = i > escEnd + 1 ? i - 2 : escStart - 1; // Bail out if lineWidth & minContentWidth are shorter than an escape string
+
+          if (escapedFolds[j]) return text;
+          folds.push(j);
+          escapedFolds[j] = true;
+          end = j + endStep;
+          split = undefined;
+        } else {
+          overflow = true;
+        }
+      }
+    }
+
+    prev = ch;
+  }
+
+  if (overflow && onOverflow) onOverflow();
+  if (folds.length === 0) return text;
+  if (onFold) onFold();
+  let res = text.slice(0, folds[0]);
+
+  for (let i = 0; i < folds.length; ++i) {
+    const fold = folds[i];
+    const end = folds[i + 1] || text.length;
+    if (fold === 0) res = `\n${indent}${text.slice(0, end)}`;else {
+      if (mode === FOLD_QUOTED && escapedFolds[fold]) res += `${text[fold]}\\`;
+      res += `\n${indent}${text.slice(fold + 1, end)}`;
+    }
+  }
+
+  return res;
+}
+
+const getFoldOptions = ({
+  indentAtStart
+}) => indentAtStart ? Object.assign({
+  indentAtStart
+}, strOptions.fold) : strOptions.fold; // Also checks for lines starting with %, as parsing the output as YAML 1.1 will
+// presume that's starting a new document.
+
+
+const containsDocumentMarker = str => /^(%|---|\.\.\.)/m.test(str);
+
+function lineLengthOverLimit(str, lineWidth, indentLength) {
+  if (!lineWidth || lineWidth < 0) return false;
+  const limit = lineWidth - indentLength;
+  const strLen = str.length;
+  if (strLen <= limit) return false;
+
+  for (let i = 0, start = 0; i < strLen; ++i) {
+    if (str[i] === '\n') {
+      if (i - start > limit) return true;
+      start = i + 1;
+      if (strLen - start <= limit) return false;
+    }
+  }
+
+  return true;
+}
+
+function doubleQuotedString(value, ctx) {
+  const {
+    implicitKey
+  } = ctx;
+  const {
+    jsonEncoding,
+    minMultiLineLength
+  } = strOptions.doubleQuoted;
+  const json = JSON.stringify(value);
+  if (jsonEncoding) return json;
+  const indent = ctx.indent || (containsDocumentMarker(value) ? '  ' : '');
+  let str = '';
+  let start = 0;
+
+  for (let i = 0, ch = json[i]; ch; ch = json[++i]) {
+    if (ch === ' ' && json[i + 1] === '\\' && json[i + 2] === 'n') {
+      // space before newline needs to be escaped to not be folded
+      str += json.slice(start, i) + '\\ ';
+      i += 1;
+      start = i;
+      ch = '\\';
+    }
+
+    if (ch === '\\') switch (json[i + 1]) {
+      case 'u':
+        {
+          str += json.slice(start, i);
+          const code = json.substr(i + 2, 4);
+
+          switch (code) {
+            case '0000':
+              str += '\\0';
+              break;
+
+            case '0007':
+              str += '\\a';
+              break;
+
+            case '000b':
+              str += '\\v';
+              break;
+
+            case '001b':
+              str += '\\e';
+              break;
+
+            case '0085':
+              str += '\\N';
+              break;
+
+            case '00a0':
+              str += '\\_';
+              break;
+
+            case '2028':
+              str += '\\L';
+              break;
+
+            case '2029':
+              str += '\\P';
+              break;
+
+            default:
+              if (code.substr(0, 2) === '00') str += '\\x' + code.substr(2);else str += json.substr(i, 6);
+          }
+
+          i += 5;
+          start = i + 1;
+        }
+        break;
+
+      case 'n':
+        if (implicitKey || json[i + 2] === '"' || json.length < minMultiLineLength) {
+          i += 1;
+        } else {
+          // folding will eat first newline
+          str += json.slice(start, i) + '\n\n';
+
+          while (json[i + 2] === '\\' && json[i + 3] === 'n' && json[i + 4] !== '"') {
+            str += '\n';
+            i += 2;
+          }
+
+          str += indent; // space after newline needs to be escaped to not be folded
+
+          if (json[i + 2] === ' ') str += '\\';
+          i += 1;
+          start = i + 1;
+        }
+
+        break;
+
+      default:
+        i += 1;
+    }
+  }
+
+  str = start ? str + json.slice(start) : json;
+  return implicitKey ? str : foldFlowLines(str, indent, FOLD_QUOTED, getFoldOptions(ctx));
+}
+
+function singleQuotedString(value, ctx) {
+  if (ctx.implicitKey) {
+    if (/\n/.test(value)) return doubleQuotedString(value, ctx);
+  } else {
+    // single quoted string can't have leading or trailing whitespace around newline
+    if (/[ \t]\n|\n[ \t]/.test(value)) return doubleQuotedString(value, ctx);
+  }
+
+  const indent = ctx.indent || (containsDocumentMarker(value) ? '  ' : '');
+  const res = "'" + value.replace(/'/g, "''").replace(/\n+/g, `$&\n${indent}`) + "'";
+  return ctx.implicitKey ? res : foldFlowLines(res, indent, FOLD_FLOW, getFoldOptions(ctx));
+}
+
+function blockString({
+  comment,
+  type,
+  value
+}, ctx, onComment, onChompKeep) {
+  // 1. Block can't end in whitespace unless the last line is non-empty.
+  // 2. Strings consisting of only whitespace are best rendered explicitly.
+  if (/\n[\t ]+$/.test(value) || /^\s*$/.test(value)) {
+    return doubleQuotedString(value, ctx);
+  }
+
+  const indent = ctx.indent || (ctx.forceBlockIndent || containsDocumentMarker(value) ? '  ' : '');
+  const indentSize = indent ? '2' : '1'; // root is at -1
+
+  const literal = type === PlainValue.Type.BLOCK_FOLDED ? false : type === PlainValue.Type.BLOCK_LITERAL ? true : !lineLengthOverLimit(value, strOptions.fold.lineWidth, indent.length);
+  let header = literal ? '|' : '>';
+  if (!value) return header + '\n';
+  let wsStart = '';
+  let wsEnd = '';
+  value = value.replace(/[\n\t ]*$/, ws => {
+    const n = ws.indexOf('\n');
+
+    if (n === -1) {
+      header += '-'; // strip
+    } else if (value === ws || n !== ws.length - 1) {
+      header += '+'; // keep
+
+      if (onChompKeep) onChompKeep();
+    }
+
+    wsEnd = ws.replace(/\n$/, '');
+    return '';
+  }).replace(/^[\n ]*/, ws => {
+    if (ws.indexOf(' ') !== -1) header += indentSize;
+    const m = ws.match(/ +$/);
+
+    if (m) {
+      wsStart = ws.slice(0, -m[0].length);
+      return m[0];
+    } else {
+      wsStart = ws;
+      return '';
+    }
+  });
+  if (wsEnd) wsEnd = wsEnd.replace(/\n+(?!\n|$)/g, `$&${indent}`);
+  if (wsStart) wsStart = wsStart.replace(/\n+/g, `$&${indent}`);
+
+  if (comment) {
+    header += ' #' + comment.replace(/ ?[\r\n]+/g, ' ');
+    if (onComment) onComment();
+  }
+
+  if (!value) return `${header}${indentSize}\n${indent}${wsEnd}`;
+
+  if (literal) {
+    value = value.replace(/\n+/g, `$&${indent}`);
+    return `${header}\n${indent}${wsStart}${value}${wsEnd}`;
+  }
+
+  value = value.replace(/\n+/g, '\n$&').replace(/(?:^|\n)([\t ].*)(?:([\n\t ]*)\n(?![\n\t ]))?/g, '$1$2') // more-indented lines aren't folded
+  //         ^ ind.line  ^ empty     ^ capture next empty lines only at end of indent
+  .replace(/\n+/g, `$&${indent}`);
+  const body = foldFlowLines(`${wsStart}${value}${wsEnd}`, indent, FOLD_BLOCK, strOptions.fold);
+  return `${header}\n${indent}${body}`;
+}
+
+function plainString(item, ctx, onComment, onChompKeep) {
+  const {
+    comment,
+    type,
+    value
+  } = item;
+  const {
+    actualString,
+    implicitKey,
+    indent,
+    inFlow
+  } = ctx;
+
+  if (implicitKey && /[\n[\]{},]/.test(value) || inFlow && /[[\]{},]/.test(value)) {
+    return doubleQuotedString(value, ctx);
+  }
+
+  if (!value || /^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/.test(value)) {
+    // not allowed:
+    // - empty string, '-' or '?'
+    // - start with an indicator character (except [?:-]) or /[?-] /
+    // - '\n ', ': ' or ' \n' anywhere
+    // - '#' not preceded by a non-space char
+    // - end with ' ' or ':'
+    return implicitKey || inFlow || value.indexOf('\n') === -1 ? value.indexOf('"') !== -1 && value.indexOf("'") === -1 ? singleQuotedString(value, ctx) : doubleQuotedString(value, ctx) : blockString(item, ctx, onComment, onChompKeep);
+  }
+
+  if (!implicitKey && !inFlow && type !== PlainValue.Type.PLAIN && value.indexOf('\n') !== -1) {
+    // Where allowed & type not set explicitly, prefer block style for multiline strings
+    return blockString(item, ctx, onComment, onChompKeep);
+  }
+
+  if (indent === '' && containsDocumentMarker(value)) {
+    ctx.forceBlockIndent = true;
+    return blockString(item, ctx, onComment, onChompKeep);
+  }
+
+  const str = value.replace(/\n+/g, `$&\n${indent}`); // Verify that output will be parsed as a string, as e.g. plain numbers and
+  // booleans get parsed with those types in v1.2 (e.g. '42', 'true' & '0.9e-3'),
+  // and others in v1.1.
+
+  if (actualString) {
+    const {
+      tags
+    } = ctx.doc.schema;
+    const resolved = resolveScalar(str, tags, tags.scalarFallback).value;
+    if (typeof resolved !== 'string') return doubleQuotedString(value, ctx);
+  }
+
+  const body = implicitKey ? str : foldFlowLines(str, indent, FOLD_FLOW, getFoldOptions(ctx));
+
+  if (comment && !inFlow && (body.indexOf('\n') !== -1 || comment.indexOf('\n') !== -1)) {
+    if (onComment) onComment();
+    return addCommentBefore(body, indent, comment);
+  }
+
+  return body;
+}
+
+function stringifyString(item, ctx, onComment, onChompKeep) {
+  const {
+    defaultType
+  } = strOptions;
+  const {
+    implicitKey,
+    inFlow
+  } = ctx;
+  let {
+    type,
+    value
+  } = item;
+
+  if (typeof value !== 'string') {
+    value = String(value);
+    item = Object.assign({}, item, {
+      value
+    });
+  }
+
+  const _stringify = _type => {
+    switch (_type) {
+      case PlainValue.Type.BLOCK_FOLDED:
+      case PlainValue.Type.BLOCK_LITERAL:
+        return blockString(item, ctx, onComment, onChompKeep);
+
+      case PlainValue.Type.QUOTE_DOUBLE:
+        return doubleQuotedString(value, ctx);
+
+      case PlainValue.Type.QUOTE_SINGLE:
+        return singleQuotedString(value, ctx);
+
+      case PlainValue.Type.PLAIN:
+        return plainString(item, ctx, onComment, onChompKeep);
+
+      default:
+        return null;
+    }
+  };
+
+  if (type !== PlainValue.Type.QUOTE_DOUBLE && /[\x00-\x08\x0b-\x1f\x7f-\x9f]/.test(value)) {
+    // force double quotes on control characters
+    type = PlainValue.Type.QUOTE_DOUBLE;
+  } else if ((implicitKey || inFlow) && (type === PlainValue.Type.BLOCK_FOLDED || type === PlainValue.Type.BLOCK_LITERAL)) {
+    // should not happen; blocks are not valid inside flow containers
+    type = PlainValue.Type.QUOTE_DOUBLE;
+  }
+
+  let res = _stringify(type);
+
+  if (res === null) {
+    res = _stringify(defaultType);
+    if (res === null) throw new Error(`Unsupported default string type ${defaultType}`);
+  }
+
+  return res;
+}
+
+function stringifyNumber({
+  format,
+  minFractionDigits,
+  tag,
+  value
+}) {
+  if (typeof value === 'bigint') return String(value);
+  if (!isFinite(value)) return isNaN(value) ? '.nan' : value < 0 ? '-.inf' : '.inf';
+  let n = JSON.stringify(value);
+
+  if (!format && minFractionDigits && (!tag || tag === 'tag:yaml.org,2002:float') && /^\d/.test(n)) {
+    let i = n.indexOf('.');
+
+    if (i < 0) {
+      i = n.length;
+      n += '.';
+    }
+
+    let d = minFractionDigits - (n.length - i - 1);
+
+    while (d-- > 0) n += '0';
+  }
+
+  return n;
+}
+
+function checkFlowCollectionEnd(errors, cst) {
+  let char, name;
+
+  switch (cst.type) {
+    case PlainValue.Type.FLOW_MAP:
+      char = '}';
+      name = 'flow map';
+      break;
+
+    case PlainValue.Type.FLOW_SEQ:
+      char = ']';
+      name = 'flow sequence';
+      break;
+
+    default:
+      errors.push(new PlainValue.YAMLSemanticError(cst, 'Not a flow collection!?'));
+      return;
+  }
+
+  let lastItem;
+
+  for (let i = cst.items.length - 1; i >= 0; --i) {
+    const item = cst.items[i];
+
+    if (!item || item.type !== PlainValue.Type.COMMENT) {
+      lastItem = item;
+      break;
+    }
+  }
+
+  if (lastItem && lastItem.char !== char) {
+    const msg = `Expected ${name} to end with ${char}`;
+    let err;
+
+    if (typeof lastItem.offset === 'number') {
+      err = new PlainValue.YAMLSemanticError(cst, msg);
+      err.offset = lastItem.offset + 1;
+    } else {
+      err = new PlainValue.YAMLSemanticError(lastItem, msg);
+      if (lastItem.range && lastItem.range.end) err.offset = lastItem.range.end - lastItem.range.start;
+    }
+
+    errors.push(err);
+  }
+}
+function checkFlowCommentSpace(errors, comment) {
+  const prev = comment.context.src[comment.range.start - 1];
+
+  if (prev !== '\n' && prev !== '\t' && prev !== ' ') {
+    const msg = 'Comments must be separated from other tokens by white space characters';
+    errors.push(new PlainValue.YAMLSemanticError(comment, msg));
+  }
+}
+function getLongKeyError(source, key) {
+  const sk = String(key);
+  const k = sk.substr(0, 8) + '...' + sk.substr(-8);
+  return new PlainValue.YAMLSemanticError(source, `The "${k}" key is too long`);
+}
+function resolveComments(collection, comments) {
+  for (const {
+    afterKey,
+    before,
+    comment
+  } of comments) {
+    let item = collection.items[before];
+
+    if (!item) {
+      if (comment !== undefined) {
+        if (collection.comment) collection.comment += '\n' + comment;else collection.comment = comment;
+      }
+    } else {
+      if (afterKey && item.value) item = item.value;
+
+      if (comment === undefined) {
+        if (afterKey || !item.commentBefore) item.spaceBefore = true;
+      } else {
+        if (item.commentBefore) item.commentBefore += '\n' + comment;else item.commentBefore = comment;
+      }
+    }
+  }
+}
+
+// on error, will return { str: string, errors: Error[] }
+function resolveString(doc, node) {
+  const res = node.strValue;
+  if (!res) return '';
+  if (typeof res === 'string') return res;
+  res.errors.forEach(error => {
+    if (!error.source) error.source = node;
+    doc.errors.push(error);
+  });
+  return res.str;
+}
+
+function resolveTagHandle(doc, node) {
+  const {
+    handle,
+    suffix
+  } = node.tag;
+  let prefix = doc.tagPrefixes.find(p => p.handle === handle);
+
+  if (!prefix) {
+    const dtp = doc.getDefaults().tagPrefixes;
+    if (dtp) prefix = dtp.find(p => p.handle === handle);
+    if (!prefix) throw new PlainValue.YAMLSemanticError(node, `The ${handle} tag handle is non-default and was not declared.`);
+  }
+
+  if (!suffix) throw new PlainValue.YAMLSemanticError(node, `The ${handle} tag has no suffix.`);
+
+  if (handle === '!' && (doc.version || doc.options.version) === '1.0') {
+    if (suffix[0] === '^') {
+      doc.warnings.push(new PlainValue.YAMLWarning(node, 'YAML 1.0 ^ tag expansion is not supported'));
+      return suffix;
+    }
+
+    if (/[:/]/.test(suffix)) {
+      // word/foo -> tag:word.yaml.org,2002:foo
+      const vocab = suffix.match(/^([a-z0-9-]+)\/(.*)/i);
+      return vocab ? `tag:${vocab[1]}.yaml.org,2002:${vocab[2]}` : `tag:${suffix}`;
+    }
+  }
+
+  return prefix.prefix + decodeURIComponent(suffix);
+}
+
+function resolveTagName(doc, node) {
+  const {
+    tag,
+    type
+  } = node;
+  let nonSpecific = false;
+
+  if (tag) {
+    const {
+      handle,
+      suffix,
+      verbatim
+    } = tag;
+
+    if (verbatim) {
+      if (verbatim !== '!' && verbatim !== '!!') return verbatim;
+      const msg = `Verbatim tags aren't resolved, so ${verbatim} is invalid.`;
+      doc.errors.push(new PlainValue.YAMLSemanticError(node, msg));
+    } else if (handle === '!' && !suffix) {
+      nonSpecific = true;
+    } else {
+      try {
+        return resolveTagHandle(doc, node);
+      } catch (error) {
+        doc.errors.push(error);
+      }
+    }
+  }
+
+  switch (type) {
+    case PlainValue.Type.BLOCK_FOLDED:
+    case PlainValue.Type.BLOCK_LITERAL:
+    case PlainValue.Type.QUOTE_DOUBLE:
+    case PlainValue.Type.QUOTE_SINGLE:
+      return PlainValue.defaultTags.STR;
+
+    case PlainValue.Type.FLOW_MAP:
+    case PlainValue.Type.MAP:
+      return PlainValue.defaultTags.MAP;
+
+    case PlainValue.Type.FLOW_SEQ:
+    case PlainValue.Type.SEQ:
+      return PlainValue.defaultTags.SEQ;
+
+    case PlainValue.Type.PLAIN:
+      return nonSpecific ? PlainValue.defaultTags.STR : null;
+
+    default:
+      return null;
+  }
+}
+
+function resolveByTagName(doc, node, tagName) {
+  const {
+    tags
+  } = doc.schema;
+  const matchWithTest = [];
+
+  for (const tag of tags) {
+    if (tag.tag === tagName) {
+      if (tag.test) matchWithTest.push(tag);else {
+        const res = tag.resolve(doc, node);
+        return res instanceof Collection ? res : new Scalar(res);
+      }
+    }
+  }
+
+  const str = resolveString(doc, node);
+  if (typeof str === 'string' && matchWithTest.length > 0) return resolveScalar(str, matchWithTest, tags.scalarFallback);
+  return null;
+}
+
+function getFallbackTagName({
+  type
+}) {
+  switch (type) {
+    case PlainValue.Type.FLOW_MAP:
+    case PlainValue.Type.MAP:
+      return PlainValue.defaultTags.MAP;
+
+    case PlainValue.Type.FLOW_SEQ:
+    case PlainValue.Type.SEQ:
+      return PlainValue.defaultTags.SEQ;
+
+    default:
+      return PlainValue.defaultTags.STR;
+  }
+}
+
+function resolveTag(doc, node, tagName) {
+  try {
+    const res = resolveByTagName(doc, node, tagName);
+
+    if (res) {
+      if (tagName && node.tag) res.tag = tagName;
+      return res;
+    }
+  } catch (error) {
+    /* istanbul ignore if */
+    if (!error.source) error.source = node;
+    doc.errors.push(error);
+    return null;
+  }
+
+  try {
+    const fallback = getFallbackTagName(node);
+    if (!fallback) throw new Error(`The tag ${tagName} is unavailable`);
+    const msg = `The tag ${tagName} is unavailable, falling back to ${fallback}`;
+    doc.warnings.push(new PlainValue.YAMLWarning(node, msg));
+    const res = resolveByTagName(doc, node, fallback);
+    res.tag = tagName;
+    return res;
+  } catch (error) {
+    const refError = new PlainValue.YAMLReferenceError(node, error.message);
+    refError.stack = error.stack;
+    doc.errors.push(refError);
+    return null;
+  }
+}
+
+const isCollectionItem = node => {
+  if (!node) return false;
+  const {
+    type
+  } = node;
+  return type === PlainValue.Type.MAP_KEY || type === PlainValue.Type.MAP_VALUE || type === PlainValue.Type.SEQ_ITEM;
+};
+
+function resolveNodeProps(errors, node) {
+  const comments = {
+    before: [],
+    after: []
+  };
+  let hasAnchor = false;
+  let hasTag = false;
+  const props = isCollectionItem(node.context.parent) ? node.context.parent.props.concat(node.props) : node.props;
+
+  for (const {
+    start,
+    end
+  } of props) {
+    switch (node.context.src[start]) {
+      case PlainValue.Char.COMMENT:
+        {
+          if (!node.commentHasRequiredWhitespace(start)) {
+            const msg = 'Comments must be separated from other tokens by white space characters';
+            errors.push(new PlainValue.YAMLSemanticError(node, msg));
+          }
+
+          const {
+            header,
+            valueRange
+          } = node;
+          const cc = valueRange && (start > valueRange.start || header && start > header.start) ? comments.after : comments.before;
+          cc.push(node.context.src.slice(start + 1, end));
+          break;
+        }
+      // Actual anchor & tag resolution is handled by schema, here we just complain
+
+      case PlainValue.Char.ANCHOR:
+        if (hasAnchor) {
+          const msg = 'A node can have at most one anchor';
+          errors.push(new PlainValue.YAMLSemanticError(node, msg));
+        }
+
+        hasAnchor = true;
+        break;
+
+      case PlainValue.Char.TAG:
+        if (hasTag) {
+          const msg = 'A node can have at most one tag';
+          errors.push(new PlainValue.YAMLSemanticError(node, msg));
+        }
+
+        hasTag = true;
+        break;
+    }
+  }
+
+  return {
+    comments,
+    hasAnchor,
+    hasTag
+  };
+}
+
+function resolveNodeValue(doc, node) {
+  const {
+    anchors,
+    errors,
+    schema
+  } = doc;
+
+  if (node.type === PlainValue.Type.ALIAS) {
+    const name = node.rawValue;
+    const src = anchors.getNode(name);
+
+    if (!src) {
+      const msg = `Aliased anchor not found: ${name}`;
+      errors.push(new PlainValue.YAMLReferenceError(node, msg));
+      return null;
+    } // Lazy resolution for circular references
+
+
+    const res = new Alias(src);
+
+    anchors._cstAliases.push(res);
+
+    return res;
+  }
+
+  const tagName = resolveTagName(doc, node);
+  if (tagName) return resolveTag(doc, node, tagName);
+
+  if (node.type !== PlainValue.Type.PLAIN) {
+    const msg = `Failed to resolve ${node.type} node here`;
+    errors.push(new PlainValue.YAMLSyntaxError(node, msg));
+    return null;
+  }
+
+  try {
+    const str = resolveString(doc, node);
+    return resolveScalar(str, schema.tags, schema.tags.scalarFallback);
+  } catch (error) {
+    if (!error.source) error.source = node;
+    errors.push(error);
+    return null;
+  }
+} // sets node.resolved on success
+
+
+function resolveNode(doc, node) {
+  if (!node) return null;
+  if (node.error) doc.errors.push(node.error);
+  const {
+    comments,
+    hasAnchor,
+    hasTag
+  } = resolveNodeProps(doc.errors, node);
+
+  if (hasAnchor) {
+    const {
+      anchors
+    } = doc;
+    const name = node.anchor;
+    const prev = anchors.getNode(name); // At this point, aliases for any preceding node with the same anchor
+    // name have already been resolved, so it may safely be renamed.
+
+    if (prev) anchors.map[anchors.newName(name)] = prev; // During parsing, we need to store the CST node in anchors.map as
+    // anchors need to be available during resolution to allow for
+    // circular references.
+
+    anchors.map[name] = node;
+  }
+
+  if (node.type === PlainValue.Type.ALIAS && (hasAnchor || hasTag)) {
+    const msg = 'An alias node must not specify any properties';
+    doc.errors.push(new PlainValue.YAMLSemanticError(node, msg));
+  }
+
+  const res = resolveNodeValue(doc, node);
+
+  if (res) {
+    res.range = [node.range.start, node.range.end];
+    if (doc.options.keepCstNodes) res.cstNode = node;
+    if (doc.options.keepNodeTypes) res.type = node.type;
+    const cb = comments.before.join('\n');
+
+    if (cb) {
+      res.commentBefore = res.commentBefore ? `${res.commentBefore}\n${cb}` : cb;
+    }
+
+    const ca = comments.after.join('\n');
+    if (ca) res.comment = res.comment ? `${res.comment}\n${ca}` : ca;
+  }
+
+  return node.resolved = res;
+}
+
+function resolveMap(doc, cst) {
+  if (cst.type !== PlainValue.Type.MAP && cst.type !== PlainValue.Type.FLOW_MAP) {
+    const msg = `A ${cst.type} node cannot be resolved as a mapping`;
+    doc.errors.push(new PlainValue.YAMLSyntaxError(cst, msg));
+    return null;
+  }
+
+  const {
+    comments,
+    items
+  } = cst.type === PlainValue.Type.FLOW_MAP ? resolveFlowMapItems(doc, cst) : resolveBlockMapItems(doc, cst);
+  const map = new YAMLMap();
+  map.items = items;
+  resolveComments(map, comments);
+  let hasCollectionKey = false;
+
+  for (let i = 0; i < items.length; ++i) {
+    const {
+      key: iKey
+    } = items[i];
+    if (iKey instanceof Collection) hasCollectionKey = true;
+
+    if (doc.schema.merge && iKey && iKey.value === MERGE_KEY) {
+      items[i] = new Merge(items[i]);
+      const sources = items[i].value.items;
+      let error = null;
+      sources.some(node => {
+        if (node instanceof Alias) {
+          // During parsing, alias sources are CST nodes; to account for
+          // circular references their resolved values can't be used here.
+          const {
+            type
+          } = node.source;
+          if (type === PlainValue.Type.MAP || type === PlainValue.Type.FLOW_MAP) return false;
+          return error = 'Merge nodes aliases can only point to maps';
+        }
+
+        return error = 'Merge nodes can only have Alias nodes as values';
+      });
+      if (error) doc.errors.push(new PlainValue.YAMLSemanticError(cst, error));
+    } else {
+      for (let j = i + 1; j < items.length; ++j) {
+        const {
+          key: jKey
+        } = items[j];
+
+        if (iKey === jKey || iKey && jKey && Object.prototype.hasOwnProperty.call(iKey, 'value') && iKey.value === jKey.value) {
+          const msg = `Map keys must be unique; "${iKey}" is repeated`;
+          doc.errors.push(new PlainValue.YAMLSemanticError(cst, msg));
+          break;
+        }
+      }
+    }
+  }
+
+  if (hasCollectionKey && !doc.options.mapAsMap) {
+    const warn = 'Keys with collection values will be stringified as YAML due to JS Object restrictions. Use mapAsMap: true to avoid this.';
+    doc.warnings.push(new PlainValue.YAMLWarning(cst, warn));
+  }
+
+  cst.resolved = map;
+  return map;
+}
+
+const valueHasPairComment = ({
+  context: {
+    lineStart,
+    node,
+    src
+  },
+  props
+}) => {
+  if (props.length === 0) return false;
+  const {
+    start
+  } = props[0];
+  if (node && start > node.valueRange.start) return false;
+  if (src[start] !== PlainValue.Char.COMMENT) return false;
+
+  for (let i = lineStart; i < start; ++i) if (src[i] === '\n') return false;
+
+  return true;
+};
+
+function resolvePairComment(item, pair) {
+  if (!valueHasPairComment(item)) return;
+  const comment = item.getPropValue(0, PlainValue.Char.COMMENT, true);
+  let found = false;
+  const cb = pair.value.commentBefore;
+
+  if (cb && cb.startsWith(comment)) {
+    pair.value.commentBefore = cb.substr(comment.length + 1);
+    found = true;
+  } else {
+    const cc = pair.value.comment;
+
+    if (!item.node && cc && cc.startsWith(comment)) {
+      pair.value.comment = cc.substr(comment.length + 1);
+      found = true;
+    }
+  }
+
+  if (found) pair.comment = comment;
+}
+
+function resolveBlockMapItems(doc, cst) {
+  const comments = [];
+  const items = [];
+  let key = undefined;
+  let keyStart = null;
+
+  for (let i = 0; i < cst.items.length; ++i) {
+    const item = cst.items[i];
+
+    switch (item.type) {
+      case PlainValue.Type.BLANK_LINE:
+        comments.push({
+          afterKey: !!key,
+          before: items.length
+        });
+        break;
+
+      case PlainValue.Type.COMMENT:
+        comments.push({
+          afterKey: !!key,
+          before: items.length,
+          comment: item.comment
+        });
+        break;
+
+      case PlainValue.Type.MAP_KEY:
+        if (key !== undefined) items.push(new Pair(key));
+        if (item.error) doc.errors.push(item.error);
+        key = resolveNode(doc, item.node);
+        keyStart = null;
+        break;
+
+      case PlainValue.Type.MAP_VALUE:
+        {
+          if (key === undefined) key = null;
+          if (item.error) doc.errors.push(item.error);
+
+          if (!item.context.atLineStart && item.node && item.node.type === PlainValue.Type.MAP && !item.node.context.atLineStart) {
+            const msg = 'Nested mappings are not allowed in compact mappings';
+            doc.errors.push(new PlainValue.YAMLSemanticError(item.node, msg));
+          }
+
+          let valueNode = item.node;
+
+          if (!valueNode && item.props.length > 0) {
+            // Comments on an empty mapping value need to be preserved, so we
+            // need to construct a minimal empty node here to use instead of the
+            // missing `item.node`. -- eemeli/yaml#19
+            valueNode = new PlainValue.PlainValue(PlainValue.Type.PLAIN, []);
+            valueNode.context = {
+              parent: item,
+              src: item.context.src
+            };
+            const pos = item.range.start + 1;
+            valueNode.range = {
+              start: pos,
+              end: pos
+            };
+            valueNode.valueRange = {
+              start: pos,
+              end: pos
+            };
+
+            if (typeof item.range.origStart === 'number') {
+              const origPos = item.range.origStart + 1;
+              valueNode.range.origStart = valueNode.range.origEnd = origPos;
+              valueNode.valueRange.origStart = valueNode.valueRange.origEnd = origPos;
+            }
+          }
+
+          const pair = new Pair(key, resolveNode(doc, valueNode));
+          resolvePairComment(item, pair);
+          items.push(pair);
+
+          if (key && typeof keyStart === 'number') {
+            if (item.range.start > keyStart + 1024) doc.errors.push(getLongKeyError(cst, key));
+          }
+
+          key = undefined;
+          keyStart = null;
+        }
+        break;
+
+      default:
+        if (key !== undefined) items.push(new Pair(key));
+        key = resolveNode(doc, item);
+        keyStart = item.range.start;
+        if (item.error) doc.errors.push(item.error);
+
+        next: for (let j = i + 1;; ++j) {
+          const nextItem = cst.items[j];
+
+          switch (nextItem && nextItem.type) {
+            case PlainValue.Type.BLANK_LINE:
+            case PlainValue.Type.COMMENT:
+              continue next;
+
+            case PlainValue.Type.MAP_VALUE:
+              break next;
+
+            default:
+              {
+                const msg = 'Implicit map keys need to be followed by map values';
+                doc.errors.push(new PlainValue.YAMLSemanticError(item, msg));
+                break next;
+              }
+          }
+        }
+
+        if (item.valueRangeContainsNewline) {
+          const msg = 'Implicit map keys need to be on a single line';
+          doc.errors.push(new PlainValue.YAMLSemanticError(item, msg));
+        }
+
+    }
+  }
+
+  if (key !== undefined) items.push(new Pair(key));
+  return {
+    comments,
+    items
+  };
+}
+
+function resolveFlowMapItems(doc, cst) {
+  const comments = [];
+  const items = [];
+  let key = undefined;
+  let explicitKey = false;
+  let next = '{';
+
+  for (let i = 0; i < cst.items.length; ++i) {
+    const item = cst.items[i];
+
+    if (typeof item.char === 'string') {
+      const {
+        char,
+        offset
+      } = item;
+
+      if (char === '?' && key === undefined && !explicitKey) {
+        explicitKey = true;
+        next = ':';
+        continue;
+      }
+
+      if (char === ':') {
+        if (key === undefined) key = null;
+
+        if (next === ':') {
+          next = ',';
+          continue;
+        }
+      } else {
+        if (explicitKey) {
+          if (key === undefined && char !== ',') key = null;
+          explicitKey = false;
+        }
+
+        if (key !== undefined) {
+          items.push(new Pair(key));
+          key = undefined;
+
+          if (char === ',') {
+            next = ':';
+            continue;
+          }
+        }
+      }
+
+      if (char === '}') {
+        if (i === cst.items.length - 1) continue;
+      } else if (char === next) {
+        next = ':';
+        continue;
+      }
+
+      const msg = `Flow map contains an unexpected ${char}`;
+      const err = new PlainValue.YAMLSyntaxError(cst, msg);
+      err.offset = offset;
+      doc.errors.push(err);
+    } else if (item.type === PlainValue.Type.BLANK_LINE) {
+      comments.push({
+        afterKey: !!key,
+        before: items.length
+      });
+    } else if (item.type === PlainValue.Type.COMMENT) {
+      checkFlowCommentSpace(doc.errors, item);
+      comments.push({
+        afterKey: !!key,
+        before: items.length,
+        comment: item.comment
+      });
+    } else if (key === undefined) {
+      if (next === ',') doc.errors.push(new PlainValue.YAMLSemanticError(item, 'Separator , missing in flow map'));
+      key = resolveNode(doc, item);
+    } else {
+      if (next !== ',') doc.errors.push(new PlainValue.YAMLSemanticError(item, 'Indicator : missing in flow map entry'));
+      items.push(new Pair(key, resolveNode(doc, item)));
+      key = undefined;
+      explicitKey = false;
+    }
+  }
+
+  checkFlowCollectionEnd(doc.errors, cst);
+  if (key !== undefined) items.push(new Pair(key));
+  return {
+    comments,
+    items
+  };
+}
+
+function resolveSeq(doc, cst) {
+  if (cst.type !== PlainValue.Type.SEQ && cst.type !== PlainValue.Type.FLOW_SEQ) {
+    const msg = `A ${cst.type} node cannot be resolved as a sequence`;
+    doc.errors.push(new PlainValue.YAMLSyntaxError(cst, msg));
+    return null;
+  }
+
+  const {
+    comments,
+    items
+  } = cst.type === PlainValue.Type.FLOW_SEQ ? resolveFlowSeqItems(doc, cst) : resolveBlockSeqItems(doc, cst);
+  const seq = new YAMLSeq();
+  seq.items = items;
+  resolveComments(seq, comments);
+
+  if (!doc.options.mapAsMap && items.some(it => it instanceof Pair && it.key instanceof Collection)) {
+    const warn = 'Keys with collection values will be stringified as YAML due to JS Object restrictions. Use mapAsMap: true to avoid this.';
+    doc.warnings.push(new PlainValue.YAMLWarning(cst, warn));
+  }
+
+  cst.resolved = seq;
+  return seq;
+}
+
+function resolveBlockSeqItems(doc, cst) {
+  const comments = [];
+  const items = [];
+
+  for (let i = 0; i < cst.items.length; ++i) {
+    const item = cst.items[i];
+
+    switch (item.type) {
+      case PlainValue.Type.BLANK_LINE:
+        comments.push({
+          before: items.length
+        });
+        break;
+
+      case PlainValue.Type.COMMENT:
+        comments.push({
+          comment: item.comment,
+          before: items.length
+        });
+        break;
+
+      case PlainValue.Type.SEQ_ITEM:
+        if (item.error) doc.errors.push(item.error);
+        items.push(resolveNode(doc, item.node));
+
+        if (item.hasProps) {
+          const msg = 'Sequence items cannot have tags or anchors before the - indicator';
+          doc.errors.push(new PlainValue.YAMLSemanticError(item, msg));
+        }
+
+        break;
+
+      default:
+        if (item.error) doc.errors.push(item.error);
+        doc.errors.push(new PlainValue.YAMLSyntaxError(item, `Unexpected ${item.type} node in sequence`));
+    }
+  }
+
+  return {
+    comments,
+    items
+  };
+}
+
+function resolveFlowSeqItems(doc, cst) {
+  const comments = [];
+  const items = [];
+  let explicitKey = false;
+  let key = undefined;
+  let keyStart = null;
+  let next = '[';
+  let prevItem = null;
+
+  for (let i = 0; i < cst.items.length; ++i) {
+    const item = cst.items[i];
+
+    if (typeof item.char === 'string') {
+      const {
+        char,
+        offset
+      } = item;
+
+      if (char !== ':' && (explicitKey || key !== undefined)) {
+        if (explicitKey && key === undefined) key = next ? items.pop() : null;
+        items.push(new Pair(key));
+        explicitKey = false;
+        key = undefined;
+        keyStart = null;
+      }
+
+      if (char === next) {
+        next = null;
+      } else if (!next && char === '?') {
+        explicitKey = true;
+      } else if (next !== '[' && char === ':' && key === undefined) {
+        if (next === ',') {
+          key = items.pop();
+
+          if (key instanceof Pair) {
+            const msg = 'Chaining flow sequence pairs is invalid';
+            const err = new PlainValue.YAMLSemanticError(cst, msg);
+            err.offset = offset;
+            doc.errors.push(err);
+          }
+
+          if (!explicitKey && typeof keyStart === 'number') {
+            const keyEnd = item.range ? item.range.start : item.offset;
+            if (keyEnd > keyStart + 1024) doc.errors.push(getLongKeyError(cst, key));
+            const {
+              src
+            } = prevItem.context;
+
+            for (let i = keyStart; i < keyEnd; ++i) if (src[i] === '\n') {
+              const msg = 'Implicit keys of flow sequence pairs need to be on a single line';
+              doc.errors.push(new PlainValue.YAMLSemanticError(prevItem, msg));
+              break;
+            }
+          }
+        } else {
+          key = null;
+        }
+
+        keyStart = null;
+        explicitKey = false;
+        next = null;
+      } else if (next === '[' || char !== ']' || i < cst.items.length - 1) {
+        const msg = `Flow sequence contains an unexpected ${char}`;
+        const err = new PlainValue.YAMLSyntaxError(cst, msg);
+        err.offset = offset;
+        doc.errors.push(err);
+      }
+    } else if (item.type === PlainValue.Type.BLANK_LINE) {
+      comments.push({
+        before: items.length
+      });
+    } else if (item.type === PlainValue.Type.COMMENT) {
+      checkFlowCommentSpace(doc.errors, item);
+      comments.push({
+        comment: item.comment,
+        before: items.length
+      });
+    } else {
+      if (next) {
+        const msg = `Expected a ${next} in flow sequence`;
+        doc.errors.push(new PlainValue.YAMLSemanticError(item, msg));
+      }
+
+      const value = resolveNode(doc, item);
+
+      if (key === undefined) {
+        items.push(value);
+        prevItem = item;
+      } else {
+        items.push(new Pair(key, value));
+        key = undefined;
+      }
+
+      keyStart = item.range.start;
+      next = ',';
+    }
+  }
+
+  checkFlowCollectionEnd(doc.errors, cst);
+  if (key !== undefined) items.push(new Pair(key));
+  return {
+    comments,
+    items
+  };
+}
+
+exports.Alias = Alias;
+exports.Collection = Collection;
+exports.Merge = Merge;
+exports.Node = Node;
+exports.Pair = Pair;
+exports.Scalar = Scalar;
+exports.YAMLMap = YAMLMap;
+exports.YAMLSeq = YAMLSeq;
+exports.addComment = addComment;
+exports.binaryOptions = binaryOptions;
+exports.boolOptions = boolOptions;
+exports.findPair = findPair;
+exports.intOptions = intOptions;
+exports.isEmptyPath = isEmptyPath;
+exports.nullOptions = nullOptions;
+exports.resolveMap = resolveMap;
+exports.resolveNode = resolveNode;
+exports.resolveSeq = resolveSeq;
+exports.resolveString = resolveString;
+exports.strOptions = strOptions;
+exports.stringifyNumber = stringifyNumber;
+exports.stringifyString = stringifyString;
+exports.toJSON = toJSON;
+
+
+/***/ }),
+
+/***/ 3902:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+
+var PlainValue = __nccwpck_require__(3343);
+var resolveSeq = __nccwpck_require__(2462);
+
+/* global atob, btoa, Buffer */
+const binary = {
+  identify: value => value instanceof Uint8Array,
+  // Buffer inherits from Uint8Array
+  default: false,
+  tag: 'tag:yaml.org,2002:binary',
+
+  /**
+   * Returns a Buffer in node and an Uint8Array in browsers
+   *
+   * To use the resulting buffer as an image, you'll want to do something like:
+   *
+   *   const blob = new Blob([buffer], { type: 'image/jpeg' })
+   *   document.querySelector('#photo').src = URL.createObjectURL(blob)
+   */
+  resolve: (doc, node) => {
+    const src = resolveSeq.resolveString(doc, node);
+
+    if (typeof Buffer === 'function') {
+      return Buffer.from(src, 'base64');
+    } else if (typeof atob === 'function') {
+      // On IE 11, atob() can't handle newlines
+      const str = atob(src.replace(/[\n\r]/g, ''));
+      const buffer = new Uint8Array(str.length);
+
+      for (let i = 0; i < str.length; ++i) buffer[i] = str.charCodeAt(i);
+
+      return buffer;
+    } else {
+      const msg = 'This environment does not support reading binary tags; either Buffer or atob is required';
+      doc.errors.push(new PlainValue.YAMLReferenceError(node, msg));
+      return null;
+    }
+  },
+  options: resolveSeq.binaryOptions,
+  stringify: ({
+    comment,
+    type,
+    value
+  }, ctx, onComment, onChompKeep) => {
+    let src;
+
+    if (typeof Buffer === 'function') {
+      src = value instanceof Buffer ? value.toString('base64') : Buffer.from(value.buffer).toString('base64');
+    } else if (typeof btoa === 'function') {
+      let s = '';
+
+      for (let i = 0; i < value.length; ++i) s += String.fromCharCode(value[i]);
+
+      src = btoa(s);
+    } else {
+      throw new Error('This environment does not support writing binary tags; either Buffer or btoa is required');
+    }
+
+    if (!type) type = resolveSeq.binaryOptions.defaultType;
+
+    if (type === PlainValue.Type.QUOTE_DOUBLE) {
+      value = src;
+    } else {
+      const {
+        lineWidth
+      } = resolveSeq.binaryOptions;
+      const n = Math.ceil(src.length / lineWidth);
+      const lines = new Array(n);
+
+      for (let i = 0, o = 0; i < n; ++i, o += lineWidth) {
+        lines[i] = src.substr(o, lineWidth);
+      }
+
+      value = lines.join(type === PlainValue.Type.BLOCK_LITERAL ? '\n' : ' ');
+    }
+
+    return resolveSeq.stringifyString({
+      comment,
+      type,
+      value
+    }, ctx, onComment, onChompKeep);
+  }
+};
+
+function parsePairs(doc, cst) {
+  const seq = resolveSeq.resolveSeq(doc, cst);
+
+  for (let i = 0; i < seq.items.length; ++i) {
+    let item = seq.items[i];
+    if (item instanceof resolveSeq.Pair) continue;else if (item instanceof resolveSeq.YAMLMap) {
+      if (item.items.length > 1) {
+        const msg = 'Each pair must have its own sequence indicator';
+        throw new PlainValue.YAMLSemanticError(cst, msg);
+      }
+
+      const pair = item.items[0] || new resolveSeq.Pair();
+      if (item.commentBefore) pair.commentBefore = pair.commentBefore ? `${item.commentBefore}\n${pair.commentBefore}` : item.commentBefore;
+      if (item.comment) pair.comment = pair.comment ? `${item.comment}\n${pair.comment}` : item.comment;
+      item = pair;
+    }
+    seq.items[i] = item instanceof resolveSeq.Pair ? item : new resolveSeq.Pair(item);
+  }
+
+  return seq;
+}
+function createPairs(schema, iterable, ctx) {
+  const pairs = new resolveSeq.YAMLSeq(schema);
+  pairs.tag = 'tag:yaml.org,2002:pairs';
+
+  for (const it of iterable) {
+    let key, value;
+
+    if (Array.isArray(it)) {
+      if (it.length === 2) {
+        key = it[0];
+        value = it[1];
+      } else throw new TypeError(`Expected [key, value] tuple: ${it}`);
+    } else if (it && it instanceof Object) {
+      const keys = Object.keys(it);
+
+      if (keys.length === 1) {
+        key = keys[0];
+        value = it[key];
+      } else throw new TypeError(`Expected { key: value } tuple: ${it}`);
+    } else {
+      key = it;
+    }
+
+    const pair = schema.createPair(key, value, ctx);
+    pairs.items.push(pair);
+  }
+
+  return pairs;
+}
+const pairs = {
+  default: false,
+  tag: 'tag:yaml.org,2002:pairs',
+  resolve: parsePairs,
+  createNode: createPairs
+};
+
+class YAMLOMap extends resolveSeq.YAMLSeq {
+  constructor() {
+    super();
+
+    PlainValue._defineProperty(this, "add", resolveSeq.YAMLMap.prototype.add.bind(this));
+
+    PlainValue._defineProperty(this, "delete", resolveSeq.YAMLMap.prototype.delete.bind(this));
+
+    PlainValue._defineProperty(this, "get", resolveSeq.YAMLMap.prototype.get.bind(this));
+
+    PlainValue._defineProperty(this, "has", resolveSeq.YAMLMap.prototype.has.bind(this));
+
+    PlainValue._defineProperty(this, "set", resolveSeq.YAMLMap.prototype.set.bind(this));
+
+    this.tag = YAMLOMap.tag;
+  }
+
+  toJSON(_, ctx) {
+    const map = new Map();
+    if (ctx && ctx.onCreate) ctx.onCreate(map);
+
+    for (const pair of this.items) {
+      let key, value;
+
+      if (pair instanceof resolveSeq.Pair) {
+        key = resolveSeq.toJSON(pair.key, '', ctx);
+        value = resolveSeq.toJSON(pair.value, key, ctx);
+      } else {
+        key = resolveSeq.toJSON(pair, '', ctx);
+      }
+
+      if (map.has(key)) throw new Error('Ordered maps must not include duplicate keys');
+      map.set(key, value);
+    }
+
+    return map;
+  }
+
+}
+
+PlainValue._defineProperty(YAMLOMap, "tag", 'tag:yaml.org,2002:omap');
+
+function parseOMap(doc, cst) {
+  const pairs = parsePairs(doc, cst);
+  const seenKeys = [];
+
+  for (const {
+    key
+  } of pairs.items) {
+    if (key instanceof resolveSeq.Scalar) {
+      if (seenKeys.includes(key.value)) {
+        const msg = 'Ordered maps must not include duplicate keys';
+        throw new PlainValue.YAMLSemanticError(cst, msg);
+      } else {
+        seenKeys.push(key.value);
+      }
+    }
+  }
+
+  return Object.assign(new YAMLOMap(), pairs);
+}
+
+function createOMap(schema, iterable, ctx) {
+  const pairs = createPairs(schema, iterable, ctx);
+  const omap = new YAMLOMap();
+  omap.items = pairs.items;
+  return omap;
+}
+
+const omap = {
+  identify: value => value instanceof Map,
+  nodeClass: YAMLOMap,
+  default: false,
+  tag: 'tag:yaml.org,2002:omap',
+  resolve: parseOMap,
+  createNode: createOMap
+};
+
+class YAMLSet extends resolveSeq.YAMLMap {
+  constructor() {
+    super();
+    this.tag = YAMLSet.tag;
+  }
+
+  add(key) {
+    const pair = key instanceof resolveSeq.Pair ? key : new resolveSeq.Pair(key);
+    const prev = resolveSeq.findPair(this.items, pair.key);
+    if (!prev) this.items.push(pair);
+  }
+
+  get(key, keepPair) {
+    const pair = resolveSeq.findPair(this.items, key);
+    return !keepPair && pair instanceof resolveSeq.Pair ? pair.key instanceof resolveSeq.Scalar ? pair.key.value : pair.key : pair;
+  }
+
+  set(key, value) {
+    if (typeof value !== 'boolean') throw new Error(`Expected boolean value for set(key, value) in a YAML set, not ${typeof value}`);
+    const prev = resolveSeq.findPair(this.items, key);
+
+    if (prev && !value) {
+      this.items.splice(this.items.indexOf(prev), 1);
+    } else if (!prev && value) {
+      this.items.push(new resolveSeq.Pair(key));
+    }
+  }
+
+  toJSON(_, ctx) {
+    return super.toJSON(_, ctx, Set);
+  }
+
+  toString(ctx, onComment, onChompKeep) {
+    if (!ctx) return JSON.stringify(this);
+    if (this.hasAllNullValues()) return super.toString(ctx, onComment, onChompKeep);else throw new Error('Set items must all have null values');
+  }
+
+}
+
+PlainValue._defineProperty(YAMLSet, "tag", 'tag:yaml.org,2002:set');
+
+function parseSet(doc, cst) {
+  const map = resolveSeq.resolveMap(doc, cst);
+  if (!map.hasAllNullValues()) throw new PlainValue.YAMLSemanticError(cst, 'Set items must all have null values');
+  return Object.assign(new YAMLSet(), map);
+}
+
+function createSet(schema, iterable, ctx) {
+  const set = new YAMLSet();
+
+  for (const value of iterable) set.items.push(schema.createPair(value, null, ctx));
+
+  return set;
+}
+
+const set = {
+  identify: value => value instanceof Set,
+  nodeClass: YAMLSet,
+  default: false,
+  tag: 'tag:yaml.org,2002:set',
+  resolve: parseSet,
+  createNode: createSet
+};
+
+const parseSexagesimal = (sign, parts) => {
+  const n = parts.split(':').reduce((n, p) => n * 60 + Number(p), 0);
+  return sign === '-' ? -n : n;
+}; // hhhh:mm:ss.sss
+
+
+const stringifySexagesimal = ({
+  value
+}) => {
+  if (isNaN(value) || !isFinite(value)) return resolveSeq.stringifyNumber(value);
+  let sign = '';
+
+  if (value < 0) {
+    sign = '-';
+    value = Math.abs(value);
+  }
+
+  const parts = [value % 60]; // seconds, including ms
+
+  if (value < 60) {
+    parts.unshift(0); // at least one : is required
+  } else {
+    value = Math.round((value - parts[0]) / 60);
+    parts.unshift(value % 60); // minutes
+
+    if (value >= 60) {
+      value = Math.round((value - parts[0]) / 60);
+      parts.unshift(value); // hours
+    }
+  }
+
+  return sign + parts.map(n => n < 10 ? '0' + String(n) : String(n)).join(':').replace(/000000\d*$/, '') // % 60 may introduce error
+  ;
+};
+
+const intTime = {
+  identify: value => typeof value === 'number',
+  default: true,
+  tag: 'tag:yaml.org,2002:int',
+  format: 'TIME',
+  test: /^([-+]?)([0-9][0-9_]*(?::[0-5]?[0-9])+)$/,
+  resolve: (str, sign, parts) => parseSexagesimal(sign, parts.replace(/_/g, '')),
+  stringify: stringifySexagesimal
+};
+const floatTime = {
+  identify: value => typeof value === 'number',
+  default: true,
+  tag: 'tag:yaml.org,2002:float',
+  format: 'TIME',
+  test: /^([-+]?)([0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*)$/,
+  resolve: (str, sign, parts) => parseSexagesimal(sign, parts.replace(/_/g, '')),
+  stringify: stringifySexagesimal
+};
+const timestamp = {
+  identify: value => value instanceof Date,
+  default: true,
+  tag: 'tag:yaml.org,2002:timestamp',
+  // If the time zone is omitted, the timestamp is assumed to be specified in UTC. The time part
+  // may be omitted altogether, resulting in a date format. In such a case, the time part is
+  // assumed to be 00:00:00Z (start of day, UTC).
+  test: RegExp('^(?:' + '([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})' + // YYYY-Mm-Dd
+  '(?:(?:t|T|[ \\t]+)' + // t | T | whitespace
+  '([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2}(\\.[0-9]+)?)' + // Hh:Mm:Ss(.ss)?
+  '(?:[ \\t]*(Z|[-+][012]?[0-9](?::[0-9]{2})?))?' + // Z | +5 | -03:30
+  ')?' + ')$'),
+  resolve: (str, year, month, day, hour, minute, second, millisec, tz) => {
+    if (millisec) millisec = (millisec + '00').substr(1, 3);
+    let date = Date.UTC(year, month - 1, day, hour || 0, minute || 0, second || 0, millisec || 0);
+
+    if (tz && tz !== 'Z') {
+      let d = parseSexagesimal(tz[0], tz.slice(1));
+      if (Math.abs(d) < 30) d *= 60;
+      date -= 60000 * d;
+    }
+
+    return new Date(date);
+  },
+  stringify: ({
+    value
+  }) => value.toISOString().replace(/((T00:00)?:00)?\.000Z$/, '')
+};
+
+/* global console, process, YAML_SILENCE_DEPRECATION_WARNINGS, YAML_SILENCE_WARNINGS */
+function shouldWarn(deprecation) {
+  const env = typeof process !== 'undefined' && process.env || {};
+
+  if (deprecation) {
+    if (typeof YAML_SILENCE_DEPRECATION_WARNINGS !== 'undefined') return !YAML_SILENCE_DEPRECATION_WARNINGS;
+    return !env.YAML_SILENCE_DEPRECATION_WARNINGS;
+  }
+
+  if (typeof YAML_SILENCE_WARNINGS !== 'undefined') return !YAML_SILENCE_WARNINGS;
+  return !env.YAML_SILENCE_WARNINGS;
+}
+
+function warn(warning, type) {
+  if (shouldWarn(false)) {
+    const emit = typeof process !== 'undefined' && process.emitWarning; // This will throw in Jest if `warning` is an Error instance due to
+    // https://github.com/facebook/jest/issues/2549
+
+    if (emit) emit(warning, type);else {
+      // eslint-disable-next-line no-console
+      console.warn(type ? `${type}: ${warning}` : warning);
+    }
+  }
+}
+function warnFileDeprecation(filename) {
+  if (shouldWarn(true)) {
+    const path = filename.replace(/.*yaml[/\\]/i, '').replace(/\.js$/, '').replace(/\\/g, '/');
+    warn(`The endpoint 'yaml/${path}' will be removed in a future release.`, 'DeprecationWarning');
+  }
+}
+const warned = {};
+function warnOptionDeprecation(name, alternative) {
+  if (!warned[name] && shouldWarn(true)) {
+    warned[name] = true;
+    let msg = `The option '${name}' will be removed in a future release`;
+    msg += alternative ? `, use '${alternative}' instead.` : '.';
+    warn(msg, 'DeprecationWarning');
+  }
+}
+
+exports.binary = binary;
+exports.floatTime = floatTime;
+exports.intTime = intTime;
+exports.omap = omap;
+exports.pairs = pairs;
+exports.set = set;
+exports.timestamp = timestamp;
+exports.warn = warn;
+exports.warnFileDeprecation = warnFileDeprecation;
+exports.warnOptionDeprecation = warnOptionDeprecation;
+
+
+/***/ }),
+
+/***/ 5296:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+module.exports = __nccwpck_require__(4470).YAML
+
+
+/***/ }),
+
 /***/ 8109:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -24309,7 +33709,6 @@ exports.prettifyError = prettifyError;
 /***/ 4083:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
-var __webpack_unused_export__;
 
 
 var composer = __nccwpck_require__(9493);
@@ -24331,35 +33730,35 @@ var visit = __nccwpck_require__(6796);
 
 
 
-__webpack_unused_export__ = composer.Composer;
-__webpack_unused_export__ = Document.Document;
-__webpack_unused_export__ = Schema.Schema;
-__webpack_unused_export__ = errors.YAMLError;
-__webpack_unused_export__ = errors.YAMLParseError;
-__webpack_unused_export__ = errors.YAMLWarning;
-__webpack_unused_export__ = Alias.Alias;
-__webpack_unused_export__ = Node.isAlias;
-exports.uZ = Node.isCollection;
-__webpack_unused_export__ = Node.isDocument;
-__webpack_unused_export__ = Node.isMap;
-__webpack_unused_export__ = Node.isNode;
-__webpack_unused_export__ = Node.isPair;
-__webpack_unused_export__ = Node.isScalar;
-__webpack_unused_export__ = Node.isSeq;
-__webpack_unused_export__ = Pair.Pair;
-__webpack_unused_export__ = Scalar.Scalar;
-__webpack_unused_export__ = YAMLMap.YAMLMap;
-__webpack_unused_export__ = YAMLSeq.YAMLSeq;
-__webpack_unused_export__ = cst;
-__webpack_unused_export__ = lexer.Lexer;
-exports.Yj = lineCounter.LineCounter;
-__webpack_unused_export__ = parser.Parser;
-__webpack_unused_export__ = publicApi.parse;
-exports.Ej = publicApi.parseAllDocuments;
-exports.wL = publicApi.parseDocument;
-__webpack_unused_export__ = publicApi.stringify;
-__webpack_unused_export__ = visit.visit;
-__webpack_unused_export__ = visit.visitAsync;
+exports.Composer = composer.Composer;
+exports.Document = Document.Document;
+exports.Schema = Schema.Schema;
+exports.YAMLError = errors.YAMLError;
+exports.YAMLParseError = errors.YAMLParseError;
+exports.YAMLWarning = errors.YAMLWarning;
+exports.Alias = Alias.Alias;
+exports.isAlias = Node.isAlias;
+exports.isCollection = Node.isCollection;
+exports.isDocument = Node.isDocument;
+exports.isMap = Node.isMap;
+exports.isNode = Node.isNode;
+exports.isPair = Node.isPair;
+exports.isScalar = Node.isScalar;
+exports.isSeq = Node.isSeq;
+exports.Pair = Pair.Pair;
+exports.Scalar = Scalar.Scalar;
+exports.YAMLMap = YAMLMap.YAMLMap;
+exports.YAMLSeq = YAMLSeq.YAMLSeq;
+exports.CST = cst;
+exports.Lexer = lexer.Lexer;
+exports.LineCounter = lineCounter.LineCounter;
+exports.Parser = parser.Parser;
+exports.parse = publicApi.parse;
+exports.parseAllDocuments = publicApi.parseAllDocuments;
+exports.parseDocument = publicApi.parseDocument;
+exports.stringify = publicApi.stringify;
+exports.visit = visit.visit;
+exports.visitAsync = visit.visitAsync;
 
 
 /***/ }),
@@ -30111,10 +39510,12 @@ var __webpack_exports__ = {};
 
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __nccwpck_require__(2186);
-;// CONCATENATED MODULE: external "fs/promises"
-const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs/promises");
 // EXTERNAL MODULE: ./node_modules/fs-extra/lib/index.js
 var lib = __nccwpck_require__(5630);
+// EXTERNAL MODULE: ./node_modules/lodash/isEqual.js
+var isEqual = __nccwpck_require__(52);
+// EXTERNAL MODULE: ./node_modules/lodash/merge.js
+var merge = __nccwpck_require__(481);
 // EXTERNAL MODULE: ./node_modules/yaml/dist/index.js
 var dist = __nccwpck_require__(4083);
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/references/utils/getResourceNodes.js
@@ -30276,7 +39677,7 @@ class ResourceParser {
         if (options.forceParse === false && cachedDoc) {
             return cachedDoc;
         }
-        const lineCounter = new dist/* LineCounter */.Yj();
+        const lineCounter = new dist.LineCounter();
         const parsedDoc = parseYamlDocument(resource.text, lineCounter);
         const doc = { parsedDoc, lineCounter };
         this.cache.set(cacheId, doc);
@@ -30304,584 +39705,102 @@ class ResourceParser {
             clearRefNodesCache(id);
         }
     }
+    getLineCounter(resource) {
+        return this.parse(resource).lineCounter;
+    }
 }
 function parseYamlDocument(text, lineCounter) {
-    return (0,dist/* parseDocument */.wL)(text, { lineCounter, uniqueKeys: false, strict: false });
+    return (0,dist.parseDocument)(text, { lineCounter, uniqueKeys: false, strict: false });
 }
 
-// EXTERNAL MODULE: ./node_modules/lodash/keyBy.js
-var keyBy = __nccwpck_require__(827);
-// EXTERNAL MODULE: ./node_modules/tiny-invariant/dist/tiny-invariant.cjs.js
-var tiny_invariant_cjs = __nccwpck_require__(4594);
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/constants.js
-const UNLOADED_ERR_MSG = (name) => `Cannot validate resources. The ${name} validator must first be loaded.`;
-const NOT_FOUND_ERR_MSG = (name) => `Cannot find validator: ${name}.`;
-const constants_REF_PATH_SEPARATOR = "#";
-const constants_NAME_REFNODE_PATH = `metadata${constants_REF_PATH_SEPARATOR}name`;
-const NO_HELP_AVAILABLE = "No help available.";
-const FALLBACK_REGION = {
-    startLine: 1,
-    startColumn: 1,
-    endLine: 1,
-    endColumn: 1,
-};
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/sarif.js
-
-function sarif_getResourceId(result) {
-    return getResourceLocation(result).physicalLocation?.artifactLocation.uri;
-}
-function getFileId(result) {
-    return getFileLocation(result).physicalLocation?.artifactLocation.uri;
-}
-function getResourceLocation(result) {
-    const location = result.locations?.[1];
-    tiny_invariant_cjs(location, "invalid SARIF result");
-    return location;
-}
-function getFileLocation(result) {
-    const location = result.locations?.[0];
-    tiny_invariant_cjs(location, "invalid SARIF result");
-    return location;
-}
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/common/AbstractValidator.js
-
-
-
-
-class AbstractValidator {
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/error.js
+/**
+ * Taken from extendable-error but it has problems with ESM loader.
+ * @see https://github.com/vilic/extendable-error/blob/master/src/index.ts
+ */
+class ExtendableError extends Error {
+    message;
     name;
-    loaded = false;
-    config;
-    _rules;
-    _ruleReverseLookup; // Lookup index by rule identifier;
-    previous = [];
-    constructor(name, rules) {
-        this.name = name;
-        this._rules = rules;
-        this._ruleReverseLookup = new Map();
-        rules.forEach((r, idx) => this._ruleReverseLookup.set(r.id, idx));
+    _error;
+    _stack;
+    constructor(message = "") {
+        super(message);
+        this.message = message;
+        Object.setPrototypeOf(this, new.target.prototype);
+        delete this.stack;
+        this.name = new.target.name;
+        this._error = new Error();
     }
-    get enabled() {
-        return this.config?.enabled ?? false;
-    }
-    get rules() {
-        return this._rules;
-    }
-    createValidationResult(ruleId, args) {
-        const index = this._ruleReverseLookup.get(ruleId);
-        tiny_invariant_cjs(index !== undefined, "rules misconfigured");
-        return {
-            ruleId,
-            rule: {
-                index,
-                toolComponent: {
-                    name: this.name,
-                },
-            },
-            ...args,
-        };
-    }
-    async load(config) {
-        this.config = config;
-        if (!this.config.enabled)
-            return;
-        await this.doLoad(config);
-        this.loaded = true;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    doLoad(config) {
-        return Promise.resolve();
-    }
-    async clear() {
-        this.previous = [];
-    }
-    async validate(resources, incremental) {
-        tiny_invariant_cjs(this.loaded, UNLOADED_ERR_MSG(this.name));
-        let results = await this.doValidate(resources, incremental);
-        if (incremental) {
-            results = this.merge(this.previous, results, incremental);
+    get stack() {
+        if (this._stack) {
+            return this._stack;
         }
-        this.previous = results;
-        return {
-            tool: {
-                driver: {
-                    name: this.name,
-                    rules: this.rules,
-                },
-            },
-            results,
-        };
-    }
-    merge(previous, current, incremental) {
-        const results = [];
-        const hashmap = keyBy(incremental?.resourceIds);
-        for (const result of previous) {
-            const resourceId = sarif_getResourceId(result);
-            const isDirty = Boolean(resourceId && hashmap[resourceId]);
-            if (!isDirty) {
-                results.push(result);
+        let prototype = Object.getPrototypeOf(this);
+        let depth = 1;
+        loop: while (prototype) {
+            switch (prototype) {
+                case ExtendableError.prototype:
+                    break loop;
+                case Object.prototype:
+                    depth = 1;
+                    break loop;
+                default:
+                    depth++;
+                    break;
             }
+            prototype = Object.getPrototypeOf(prototype);
         }
-        for (const result of current) {
-            const resourceId = sarif_getResourceId(result);
-            const isDirty = resourceId && hashmap[resourceId];
-            if (isDirty) {
-                results.push(result);
-            }
+        let stackLines = (this._error.stack || "").match(/.+/g) || [];
+        let nameLine = this.name;
+        if (this.message) {
+            nameLine += `: ${this.message}`;
         }
-        return results;
+        stackLines.splice(0, depth + 1, nameLine);
+        return (this._stack = stackLines.join("\n"));
     }
 }
 
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/labels/rules.js
-const LABELS_RULES = [
-    {
-        id: "LBL001",
-        name: "LABEL_MISSING",
-        shortDescription: {
-            text: "Cannot find any label.",
-        },
-        fullDescription: {
-            text: "The resource should use labels to easily identify it. Without labels it is difficult to determine source of deployment and ownership.",
-        },
-        help: {
-            text: "Add any label to the Kubernetes resource.",
-        },
-    },
-];
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/createLocations.js
-
-function createLocations(resource, region = FALLBACK_REGION) {
-    // SARIF expects relative paths without leading path separator '/'.
-    const filePath = resource.filePath.startsWith("/")
-        ? resource.filePath.substring(1)
-        : resource.filePath;
-    return [
-        {
-            physicalLocation: {
-                artifactLocation: {
-                    uriBaseId: "SRCROOT",
-                    uri: filePath,
-                },
-                region: {
-                    ...region,
-                    startLine: region.startLine + (resource.fileOffset ?? 0),
-                    endLine: region.endLine + (resource.fileOffset ?? 0),
-                },
-            },
-        },
-        {
-            physicalLocation: {
-                artifactLocation: {
-                    uriBaseId: "RESOURCE",
-                    uri: resource.id,
-                },
-                region,
-            },
-        },
-    ];
-}
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/labels/validator.js
-
-
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/abort.js
 
 /**
- * Trivial validator used for development and testing.
+ * An error that indicates that the operation was aborted.
+ *
+ * The main thing we care about is that error.name is 'AbortError'.
  */
-class LabelsValidator extends AbstractValidator {
-    parser;
-    constructor(parser) {
-        super("labels", LABELS_RULES);
-        this.parser = parser;
-    }
-    async doValidate(resources, incremental) {
-        const invalidResources = [];
-        const dirtyResources = incremental
-            ? resources.filter((r) => incremental.resourceIds.includes(r.id))
-            : resources;
-        for (const resource of dirtyResources) {
-            const labels = Object.entries(resource.content.metadata?.labels ?? {});
-            const hasLabels = labels.length > 0;
-            if (!hasLabels) {
-                invalidResources.push(resource);
-            }
-        }
-        const results = invalidResources.map((r) => this.adaptToValidationResult(r));
-        return results;
-    }
-    adaptToValidationResult(resource) {
-        const { parsedDoc } = this.parser.parse(resource);
-        const node = parsedDoc.getIn(["metadata"], true);
-        const region = node?.range
-            ? this.parser.parseErrorRegion(resource, node.range)
-            : undefined;
-        const locations = createLocations(resource, region);
-        return this.createValidationResult("LBL001", {
-            message: {
-                text: "Resource is unlabelled.",
-            },
-            locations,
-        });
+class AbortError extends ExtendableError {
+    constructor(message) {
+        super(message);
     }
 }
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/yaml-syntax/rules.js
-
+function throwIfAborted(signal) {
+    // AbortSignal.throwIfAborted exists but is not supported in NodeJs <v17.3.0
+    // and it is also not available in abort-controller polyfill.
+    // See https://nodejs.org/api/globals.html#abortsignalthrowifaborted
+    if (signal.aborted) {
+        throw new AbortError(signal.reason);
+    }
+}
 /**
- * Maps a YAML error code to its rule identifier.
+ * You can use this to continue in the next iteration of the event loop.
  *
- * This is done because rule identifiers should be opaque.
- * Let's use a consistent format so printing looks nice across validators.
- *
- * @see https://eemeli.org/yaml/#errors
+ * Useful to prioritise more high-priority execution such as rendering.
  */
-const YAML_RULE_MAP = {
-    ALIAS_PROPS: "YML001",
-    BAD_ALIAS: "YML002",
-    BAD_DIRECTIVE: "YML003",
-    BAD_DQ_ESCAPE: "YML004",
-    BAD_INDENT: "YML005",
-    BAD_PROP_ORDER: "YML006",
-    BAD_SCALAR_START: "YML007",
-    BLOCK_AS_IMPLICIT_KEY: "YML008",
-    BLOCK_IN_FLOW: "YML009",
-    DUPLICATE_KEY: "YML010",
-    IMPOSSIBLE: "YML011",
-    KEY_OVER_1024_CHARS: "YML012",
-    MISSING_ANCHOR: "YML013",
-    MISSING_CHAR: "YML014",
-    MULTILINE_IMPLICIT_KEY: "YML015",
-    MULTIPLE_ANCHORS: "YML016",
-    MULTIPLE_DOCS: "YML017",
-    MULTIPLE_TAGS: "YML018",
-    TAB_AS_INDENT: "YML019",
-    TAG_RESOLVE_FAILED: "YML020",
-    UNEXPECTED_TOKEN: "YML021",
-};
-const YAML_RULES = [
-    {
-        id: "YML001",
-        name: "ALIAS_PROPS",
-        shortDescription: {
-            text: "The alias props are incorrect.",
-        },
-        fullDescription: {
-            text: "Unlike scalars and collections, alias nodes cannot have an anchor or tag associated with it.",
-        },
-        help: {
-            text: "Do not associate anchors with alias nodes.",
-        },
-    },
-    {
-        id: "YML002",
-        name: "BAD_ALIAS",
-        shortDescription: {
-            text: "The alias' format is incorrect.",
-        },
-        fullDescription: {
-            text: "An alias identifier must be a non-empty sequence of valid characters.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML003",
-        name: "BAD_DIRECTIVE",
-        shortDescription: {
-            text: "The directive is incorrect.",
-        },
-        fullDescription: {
-            text: "Only the %YAML and %TAG directives are supported, and they need to follow the specified structure.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML004",
-        name: "BAD_DQ_ESCAPE",
-        shortDescription: {
-            text: "The double quotes are escaped incorrectly.",
-        },
-        fullDescription: {
-            text: "Double-quotes strings may include '\\' escaped content, but that needs to be valid.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML005",
-        name: "BAD_INDENT",
-        shortDescription: {
-            text: "The indentation is incorrect.",
-        },
-        fullDescription: {
-            text: "Indentation is important in YAML, and collection items need to all start at the same level. Block scalars are also picky about their leading content.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML006",
-        name: "BAD_PROP_ORDER",
-        shortDescription: {
-            text: "The anchors and tags are used incorrectly.",
-        },
-        fullDescription: {
-            text: "Anchors and tags must be placed after the ?, : and - indicators.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML007",
-        name: "BAD_SCALAR_START",
-        shortDescription: {
-            text: "The scalar is formatted incorrectly.",
-        },
-        fullDescription: {
-            text: "Plain scalars cannot start with a block scalar indicator, or one of the two reserved characters: @ and `.",
-        },
-        help: {
-            text: "To fix, use a block or quoted scalar for the value",
-        },
-    },
-    {
-        id: "YML008",
-        name: "BLOCK_AS_IMPLICIT_KEY",
-        shortDescription: {
-            text: "The identation is incorrect.",
-        },
-        fullDescription: {
-            text: "There's probably something wrong with the indentation, or you're trying to parse something like a: b: c, where it's not clear what's the key and what's the value.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML009",
-        name: "BLOCK_IN_FLOW",
-        shortDescription: {
-            text: "Cannot use block within flow.",
-        },
-        fullDescription: {
-            text: "YAML scalars and collections both have block and flow styles. Flow is allowed within block, but not the other way around.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML010",
-        name: "DUPLICATE_KEY",
-        shortDescription: {
-            text: "Cannot use duplicate keys.",
-        },
-        fullDescription: {
-            text: "Keys within a map must be unique.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML011",
-        name: "IMPOSSIBLE",
-        shortDescription: {
-            text: "Something unexpected went wrong",
-        },
-        fullDescription: {
-            text: "This really should not happen. If you encounter this error code, please file a bug.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML012",
-        name: "KEY_OVER_1024_CHARS",
-        shortDescription: {
-            text: "The key is too long.",
-        },
-        fullDescription: {
-            text: "Due to legacy reasons, implicit keys must have their following : indicator after at most 1k characters.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML013",
-        name: "MISSING_ANCHOR",
-        shortDescription: {
-            text: "The anchor is missing.",
-        },
-        fullDescription: {
-            text: "Aliases can only dereference anchors that are before them in the document.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML014",
-        name: "MISSING_CHAR",
-        shortDescription: {
-            text: "A character is missing.",
-        },
-        fullDescription: {
-            text: "Some character or characters are missing here. See the error message for what you need to add.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML015",
-        name: "MULTILINE_IMPLICIT_KEY",
-        shortDescription: {
-            text: "Cannot use multiple lines with implicit keys.",
-        },
-        fullDescription: {
-            text: "Implicit keys need to be on a single line.",
-        },
-        help: {
-            text: "Does the input include a plain scalar with a : followed by whitespace, which is getting parsed as a map key?",
-        },
-    },
-    {
-        id: "YML016",
-        name: "MULTIPLE_ANCHORS",
-        shortDescription: {
-            text: "Cannot have multiple anchors.",
-        },
-        fullDescription: {
-            text: "A node is only allowed to have one anchor.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML017",
-        name: "MULTIPLE_DOCS",
-        shortDescription: {
-            text: "Cannot parse this document.",
-        },
-        fullDescription: {
-            text: "A YAML stream may include multiple documents.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML018",
-        name: "MULTIPLE_TAGS",
-        shortDescription: {
-            text: "Cannot use multiple tags.",
-        },
-        fullDescription: {
-            text: "A node is only allowed to have one tag.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML019",
-        name: "TAB_AS_INDENT",
-        shortDescription: {
-            text: "Cannot use tabs for identation.",
-        },
-        fullDescription: {
-            text: "Only spaces are allowed as indentation.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML020",
-        name: "TAG_RESOLVE_FAILED",
-        shortDescription: {
-            text: "Cannot resolve the tag.",
-        },
-        fullDescription: {
-            text: "Something went wrong when resolving a node's tag with the current schema.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-    {
-        id: "YML021",
-        name: "UNEXPECTED_TOKEN",
-        shortDescription: {
-            text: "The token was unexpected.",
-        },
-        fullDescription: {
-            text: "A token was encountered in a place where it wasn't expected.",
-        },
-        help: {
-            text: NO_HELP_AVAILABLE,
-        },
-    },
-];
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/yaml-syntax/validator.js
-
-
-
-class YamlValidator extends AbstractValidator {
-    resourceParser;
-    constructor(resourceParser) {
-        super("yaml-syntax", YAML_RULES);
-        this.resourceParser = resourceParser;
+function nextTick() {
+    if (typeof setImmediate === "function") {
+        return new Promise((r) => setImmediate(r));
     }
-    async doValidate(resources, incremental) {
-        const results = [];
-        const dirtyResources = incremental
-            ? resources.filter((r) => incremental.resourceIds.includes(r.id))
-            : resources;
-        for (const resource of dirtyResources) {
-            const resourceErrors = await this.validateResource(resource);
-            results.push(...resourceErrors);
-        }
-        return results;
-    }
-    /**
-     * Parse for YAML errors that were allowed by non-strict parsing
-     */
-    async validateResource(resource) {
-        const { parsedDoc } = this.resourceParser.parse(resource, {
-            forceParse: true,
-        });
-        const results = parsedDoc.errors.map((err) => {
-            return this.adaptToValidationResult(resource, err);
-        });
-        return results;
-    }
-    adaptToValidationResult(resource, err) {
-        const region = this.resourceParser.parseErrorRegion(resource, err.pos);
-        const locations = createLocations(resource, region);
-        const ruleId = YAML_RULE_MAP[err.code];
-        return this.createValidationResult(ruleId, {
-            message: {
-                text: err.message,
-            },
-            locations,
-        });
-    }
+    // Warning: setTimeout actually has a 4ms minimum wait time due to browser restrictions.
+    // Be careful using this often as you will ruin the performance.
+    // Note: there are some polyfill solutions to be investigated.
+    return new Promise((r) => setTimeout(r, 0));
+}
+
+// EXTERNAL MODULE: ./node_modules/lodash/isNil.js
+var isNil = __nccwpck_require__(4977);
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/isDefined.js
+
+function isDefined(value) {
+    return !isNil(value);
 }
 
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/knownResourceKinds.js
@@ -30980,6 +39899,3331 @@ class SchemaLoader {
 
 // EXTERNAL MODULE: ./node_modules/ajv/lib/ajv.js
 var ajv = __nccwpck_require__(4941);
+;// CONCATENATED MODULE: ./node_modules/zod/lib/index.mjs
+var util;
+(function (util) {
+    util.assertEqual = (val) => val;
+    function assertIs(_arg) { }
+    util.assertIs = assertIs;
+    function assertNever(_x) {
+        throw new Error();
+    }
+    util.assertNever = assertNever;
+    util.arrayToEnum = (items) => {
+        const obj = {};
+        for (const item of items) {
+            obj[item] = item;
+        }
+        return obj;
+    };
+    util.getValidEnumValues = (obj) => {
+        const validKeys = util.objectKeys(obj).filter((k) => typeof obj[obj[k]] !== "number");
+        const filtered = {};
+        for (const k of validKeys) {
+            filtered[k] = obj[k];
+        }
+        return util.objectValues(filtered);
+    };
+    util.objectValues = (obj) => {
+        return util.objectKeys(obj).map(function (e) {
+            return obj[e];
+        });
+    };
+    util.objectKeys = typeof Object.keys === "function" // eslint-disable-line ban/ban
+        ? (obj) => Object.keys(obj) // eslint-disable-line ban/ban
+        : (object) => {
+            const keys = [];
+            for (const key in object) {
+                if (Object.prototype.hasOwnProperty.call(object, key)) {
+                    keys.push(key);
+                }
+            }
+            return keys;
+        };
+    util.find = (arr, checker) => {
+        for (const item of arr) {
+            if (checker(item))
+                return item;
+        }
+        return undefined;
+    };
+    util.isInteger = typeof Number.isInteger === "function"
+        ? (val) => Number.isInteger(val) // eslint-disable-line ban/ban
+        : (val) => typeof val === "number" && isFinite(val) && Math.floor(val) === val;
+    function joinValues(array, separator = " | ") {
+        return array
+            .map((val) => (typeof val === "string" ? `'${val}'` : val))
+            .join(separator);
+    }
+    util.joinValues = joinValues;
+    util.jsonStringifyReplacer = (_, value) => {
+        if (typeof value === "bigint") {
+            return value.toString();
+        }
+        return value;
+    };
+})(util || (util = {}));
+const ZodParsedType = util.arrayToEnum([
+    "string",
+    "nan",
+    "number",
+    "integer",
+    "float",
+    "boolean",
+    "date",
+    "bigint",
+    "symbol",
+    "function",
+    "undefined",
+    "null",
+    "array",
+    "object",
+    "unknown",
+    "promise",
+    "void",
+    "never",
+    "map",
+    "set",
+]);
+const getParsedType = (data) => {
+    const t = typeof data;
+    switch (t) {
+        case "undefined":
+            return ZodParsedType.undefined;
+        case "string":
+            return ZodParsedType.string;
+        case "number":
+            return isNaN(data) ? ZodParsedType.nan : ZodParsedType.number;
+        case "boolean":
+            return ZodParsedType.boolean;
+        case "function":
+            return ZodParsedType.function;
+        case "bigint":
+            return ZodParsedType.bigint;
+        case "object":
+            if (Array.isArray(data)) {
+                return ZodParsedType.array;
+            }
+            if (data === null) {
+                return ZodParsedType.null;
+            }
+            if (data.then &&
+                typeof data.then === "function" &&
+                data.catch &&
+                typeof data.catch === "function") {
+                return ZodParsedType.promise;
+            }
+            if (typeof Map !== "undefined" && data instanceof Map) {
+                return ZodParsedType.map;
+            }
+            if (typeof Set !== "undefined" && data instanceof Set) {
+                return ZodParsedType.set;
+            }
+            if (typeof Date !== "undefined" && data instanceof Date) {
+                return ZodParsedType.date;
+            }
+            return ZodParsedType.object;
+        default:
+            return ZodParsedType.unknown;
+    }
+};
+
+const ZodIssueCode = util.arrayToEnum([
+    "invalid_type",
+    "invalid_literal",
+    "custom",
+    "invalid_union",
+    "invalid_union_discriminator",
+    "invalid_enum_value",
+    "unrecognized_keys",
+    "invalid_arguments",
+    "invalid_return_type",
+    "invalid_date",
+    "invalid_string",
+    "too_small",
+    "too_big",
+    "invalid_intersection_types",
+    "not_multiple_of",
+]);
+const quotelessJson = (obj) => {
+    const json = JSON.stringify(obj, null, 2);
+    return json.replace(/"([^"]+)":/g, "$1:");
+};
+class ZodError extends Error {
+    constructor(issues) {
+        super();
+        this.issues = [];
+        this.addIssue = (sub) => {
+            this.issues = [...this.issues, sub];
+        };
+        this.addIssues = (subs = []) => {
+            this.issues = [...this.issues, ...subs];
+        };
+        const actualProto = new.target.prototype;
+        if (Object.setPrototypeOf) {
+            // eslint-disable-next-line ban/ban
+            Object.setPrototypeOf(this, actualProto);
+        }
+        else {
+            this.__proto__ = actualProto;
+        }
+        this.name = "ZodError";
+        this.issues = issues;
+    }
+    get errors() {
+        return this.issues;
+    }
+    format(_mapper) {
+        const mapper = _mapper ||
+            function (issue) {
+                return issue.message;
+            };
+        const fieldErrors = { _errors: [] };
+        const processError = (error) => {
+            for (const issue of error.issues) {
+                if (issue.code === "invalid_union") {
+                    issue.unionErrors.map(processError);
+                }
+                else if (issue.code === "invalid_return_type") {
+                    processError(issue.returnTypeError);
+                }
+                else if (issue.code === "invalid_arguments") {
+                    processError(issue.argumentsError);
+                }
+                else if (issue.path.length === 0) {
+                    fieldErrors._errors.push(mapper(issue));
+                }
+                else {
+                    let curr = fieldErrors;
+                    let i = 0;
+                    while (i < issue.path.length) {
+                        const el = issue.path[i];
+                        const terminal = i === issue.path.length - 1;
+                        if (!terminal) {
+                            curr[el] = curr[el] || { _errors: [] };
+                            // if (typeof el === "string") {
+                            //   curr[el] = curr[el] || { _errors: [] };
+                            // } else if (typeof el === "number") {
+                            //   const errorArray: any = [];
+                            //   errorArray._errors = [];
+                            //   curr[el] = curr[el] || errorArray;
+                            // }
+                        }
+                        else {
+                            curr[el] = curr[el] || { _errors: [] };
+                            curr[el]._errors.push(mapper(issue));
+                        }
+                        curr = curr[el];
+                        i++;
+                    }
+                }
+            }
+        };
+        processError(this);
+        return fieldErrors;
+    }
+    toString() {
+        return this.message;
+    }
+    get message() {
+        return JSON.stringify(this.issues, util.jsonStringifyReplacer, 2);
+    }
+    get isEmpty() {
+        return this.issues.length === 0;
+    }
+    flatten(mapper = (issue) => issue.message) {
+        const fieldErrors = {};
+        const formErrors = [];
+        for (const sub of this.issues) {
+            if (sub.path.length > 0) {
+                fieldErrors[sub.path[0]] = fieldErrors[sub.path[0]] || [];
+                fieldErrors[sub.path[0]].push(mapper(sub));
+            }
+            else {
+                formErrors.push(mapper(sub));
+            }
+        }
+        return { formErrors, fieldErrors };
+    }
+    get formErrors() {
+        return this.flatten();
+    }
+}
+ZodError.create = (issues) => {
+    const error = new ZodError(issues);
+    return error;
+};
+
+const errorMap = (issue, _ctx) => {
+    let message;
+    switch (issue.code) {
+        case ZodIssueCode.invalid_type:
+            if (issue.received === ZodParsedType.undefined) {
+                message = "Required";
+            }
+            else {
+                message = `Expected ${issue.expected}, received ${issue.received}`;
+            }
+            break;
+        case ZodIssueCode.invalid_literal:
+            message = `Invalid literal value, expected ${JSON.stringify(issue.expected, util.jsonStringifyReplacer)}`;
+            break;
+        case ZodIssueCode.unrecognized_keys:
+            message = `Unrecognized key(s) in object: ${util.joinValues(issue.keys, ", ")}`;
+            break;
+        case ZodIssueCode.invalid_union:
+            message = `Invalid input`;
+            break;
+        case ZodIssueCode.invalid_union_discriminator:
+            message = `Invalid discriminator value. Expected ${util.joinValues(issue.options)}`;
+            break;
+        case ZodIssueCode.invalid_enum_value:
+            message = `Invalid enum value. Expected ${util.joinValues(issue.options)}, received '${issue.received}'`;
+            break;
+        case ZodIssueCode.invalid_arguments:
+            message = `Invalid function arguments`;
+            break;
+        case ZodIssueCode.invalid_return_type:
+            message = `Invalid function return type`;
+            break;
+        case ZodIssueCode.invalid_date:
+            message = `Invalid date`;
+            break;
+        case ZodIssueCode.invalid_string:
+            if (typeof issue.validation === "object") {
+                if ("startsWith" in issue.validation) {
+                    message = `Invalid input: must start with "${issue.validation.startsWith}"`;
+                }
+                else if ("endsWith" in issue.validation) {
+                    message = `Invalid input: must end with "${issue.validation.endsWith}"`;
+                }
+                else {
+                    util.assertNever(issue.validation);
+                }
+            }
+            else if (issue.validation !== "regex") {
+                message = `Invalid ${issue.validation}`;
+            }
+            else {
+                message = "Invalid";
+            }
+            break;
+        case ZodIssueCode.too_small:
+            if (issue.type === "array")
+                message = `Array must contain ${issue.inclusive ? `at least` : `more than`} ${issue.minimum} element(s)`;
+            else if (issue.type === "string")
+                message = `String must contain ${issue.inclusive ? `at least` : `over`} ${issue.minimum} character(s)`;
+            else if (issue.type === "number")
+                message = `Number must be greater than ${issue.inclusive ? `or equal to ` : ``}${issue.minimum}`;
+            else if (issue.type === "date")
+                message = `Date must be greater than ${issue.inclusive ? `or equal to ` : ``}${new Date(issue.minimum)}`;
+            else
+                message = "Invalid input";
+            break;
+        case ZodIssueCode.too_big:
+            if (issue.type === "array")
+                message = `Array must contain ${issue.inclusive ? `at most` : `less than`} ${issue.maximum} element(s)`;
+            else if (issue.type === "string")
+                message = `String must contain ${issue.inclusive ? `at most` : `under`} ${issue.maximum} character(s)`;
+            else if (issue.type === "number")
+                message = `Number must be less than ${issue.inclusive ? `or equal to ` : ``}${issue.maximum}`;
+            else if (issue.type === "date")
+                message = `Date must be smaller than ${issue.inclusive ? `or equal to ` : ``}${new Date(issue.maximum)}`;
+            else
+                message = "Invalid input";
+            break;
+        case ZodIssueCode.custom:
+            message = `Invalid input`;
+            break;
+        case ZodIssueCode.invalid_intersection_types:
+            message = `Intersection results could not be merged`;
+            break;
+        case ZodIssueCode.not_multiple_of:
+            message = `Number must be a multiple of ${issue.multipleOf}`;
+            break;
+        default:
+            message = _ctx.defaultError;
+            util.assertNever(issue);
+    }
+    return { message };
+};
+
+let overrideErrorMap = errorMap;
+function setErrorMap(map) {
+    overrideErrorMap = map;
+}
+function getErrorMap() {
+    return overrideErrorMap;
+}
+
+const makeIssue = (params) => {
+    const { data, path, errorMaps, issueData } = params;
+    const fullPath = [...path, ...(issueData.path || [])];
+    const fullIssue = {
+        ...issueData,
+        path: fullPath,
+    };
+    let errorMessage = "";
+    const maps = errorMaps
+        .filter((m) => !!m)
+        .slice()
+        .reverse();
+    for (const map of maps) {
+        errorMessage = map(fullIssue, { data, defaultError: errorMessage }).message;
+    }
+    return {
+        ...issueData,
+        path: fullPath,
+        message: issueData.message || errorMessage,
+    };
+};
+const EMPTY_PATH = [];
+function addIssueToContext(ctx, issueData) {
+    const issue = makeIssue({
+        issueData: issueData,
+        data: ctx.data,
+        path: ctx.path,
+        errorMaps: [
+            ctx.common.contextualErrorMap,
+            ctx.schemaErrorMap,
+            getErrorMap(),
+            errorMap,
+        ].filter((x) => !!x),
+    });
+    ctx.common.issues.push(issue);
+}
+class ParseStatus {
+    constructor() {
+        this.value = "valid";
+    }
+    dirty() {
+        if (this.value === "valid")
+            this.value = "dirty";
+    }
+    abort() {
+        if (this.value !== "aborted")
+            this.value = "aborted";
+    }
+    static mergeArray(status, results) {
+        const arrayValue = [];
+        for (const s of results) {
+            if (s.status === "aborted")
+                return INVALID;
+            if (s.status === "dirty")
+                status.dirty();
+            arrayValue.push(s.value);
+        }
+        return { status: status.value, value: arrayValue };
+    }
+    static async mergeObjectAsync(status, pairs) {
+        const syncPairs = [];
+        for (const pair of pairs) {
+            syncPairs.push({
+                key: await pair.key,
+                value: await pair.value,
+            });
+        }
+        return ParseStatus.mergeObjectSync(status, syncPairs);
+    }
+    static mergeObjectSync(status, pairs) {
+        const finalObject = {};
+        for (const pair of pairs) {
+            const { key, value } = pair;
+            if (key.status === "aborted")
+                return INVALID;
+            if (value.status === "aborted")
+                return INVALID;
+            if (key.status === "dirty")
+                status.dirty();
+            if (value.status === "dirty")
+                status.dirty();
+            if (typeof value.value !== "undefined" || pair.alwaysSet) {
+                finalObject[key.value] = value.value;
+            }
+        }
+        return { status: status.value, value: finalObject };
+    }
+}
+const INVALID = Object.freeze({
+    status: "aborted",
+});
+const DIRTY = (value) => ({ status: "dirty", value });
+const OK = (value) => ({ status: "valid", value });
+const isAborted = (x) => x.status === "aborted";
+const isDirty = (x) => x.status === "dirty";
+const isValid = (x) => x.status === "valid";
+const isAsync = (x) => typeof Promise !== undefined && x instanceof Promise;
+
+var errorUtil;
+(function (errorUtil) {
+    errorUtil.errToObj = (message) => typeof message === "string" ? { message } : message || {};
+    errorUtil.toString = (message) => typeof message === "string" ? message : message === null || message === void 0 ? void 0 : message.message;
+})(errorUtil || (errorUtil = {}));
+
+class ParseInputLazyPath {
+    constructor(parent, value, path, key) {
+        this.parent = parent;
+        this.data = value;
+        this._path = path;
+        this._key = key;
+    }
+    get path() {
+        return this._path.concat(this._key);
+    }
+}
+const handleResult = (ctx, result) => {
+    if (isValid(result)) {
+        return { success: true, data: result.value };
+    }
+    else {
+        if (!ctx.common.issues.length) {
+            throw new Error("Validation failed but no issues detected.");
+        }
+        const error = new ZodError(ctx.common.issues);
+        return { success: false, error };
+    }
+};
+function processCreateParams(params) {
+    if (!params)
+        return {};
+    const { errorMap, invalid_type_error, required_error, description } = params;
+    if (errorMap && (invalid_type_error || required_error)) {
+        throw new Error(`Can't use "invalid_type_error" or "required_error" in conjunction with custom error map.`);
+    }
+    if (errorMap)
+        return { errorMap: errorMap, description };
+    const customMap = (iss, ctx) => {
+        if (iss.code !== "invalid_type")
+            return { message: ctx.defaultError };
+        if (typeof ctx.data === "undefined") {
+            return { message: required_error !== null && required_error !== void 0 ? required_error : ctx.defaultError };
+        }
+        return { message: invalid_type_error !== null && invalid_type_error !== void 0 ? invalid_type_error : ctx.defaultError };
+    };
+    return { errorMap: customMap, description };
+}
+class ZodType {
+    constructor(def) {
+        /** Alias of safeParseAsync */
+        this.spa = this.safeParseAsync;
+        this.superRefine = this._refinement;
+        this._def = def;
+        this.parse = this.parse.bind(this);
+        this.safeParse = this.safeParse.bind(this);
+        this.parseAsync = this.parseAsync.bind(this);
+        this.safeParseAsync = this.safeParseAsync.bind(this);
+        this.spa = this.spa.bind(this);
+        this.refine = this.refine.bind(this);
+        this.refinement = this.refinement.bind(this);
+        this.superRefine = this.superRefine.bind(this);
+        this.optional = this.optional.bind(this);
+        this.nullable = this.nullable.bind(this);
+        this.nullish = this.nullish.bind(this);
+        this.array = this.array.bind(this);
+        this.promise = this.promise.bind(this);
+        this.or = this.or.bind(this);
+        this.and = this.and.bind(this);
+        this.transform = this.transform.bind(this);
+        this.default = this.default.bind(this);
+        this.describe = this.describe.bind(this);
+        this.isNullable = this.isNullable.bind(this);
+        this.isOptional = this.isOptional.bind(this);
+    }
+    get description() {
+        return this._def.description;
+    }
+    _getType(input) {
+        return getParsedType(input.data);
+    }
+    _getOrReturnCtx(input, ctx) {
+        return (ctx || {
+            common: input.parent.common,
+            data: input.data,
+            parsedType: getParsedType(input.data),
+            schemaErrorMap: this._def.errorMap,
+            path: input.path,
+            parent: input.parent,
+        });
+    }
+    _processInputParams(input) {
+        return {
+            status: new ParseStatus(),
+            ctx: {
+                common: input.parent.common,
+                data: input.data,
+                parsedType: getParsedType(input.data),
+                schemaErrorMap: this._def.errorMap,
+                path: input.path,
+                parent: input.parent,
+            },
+        };
+    }
+    _parseSync(input) {
+        const result = this._parse(input);
+        if (isAsync(result)) {
+            throw new Error("Synchronous parse encountered promise.");
+        }
+        return result;
+    }
+    _parseAsync(input) {
+        const result = this._parse(input);
+        return Promise.resolve(result);
+    }
+    parse(data, params) {
+        const result = this.safeParse(data, params);
+        if (result.success)
+            return result.data;
+        throw result.error;
+    }
+    safeParse(data, params) {
+        var _a;
+        const ctx = {
+            common: {
+                issues: [],
+                async: (_a = params === null || params === void 0 ? void 0 : params.async) !== null && _a !== void 0 ? _a : false,
+                contextualErrorMap: params === null || params === void 0 ? void 0 : params.errorMap,
+            },
+            path: (params === null || params === void 0 ? void 0 : params.path) || [],
+            schemaErrorMap: this._def.errorMap,
+            parent: null,
+            data,
+            parsedType: getParsedType(data),
+        };
+        const result = this._parseSync({ data, path: ctx.path, parent: ctx });
+        return handleResult(ctx, result);
+    }
+    async parseAsync(data, params) {
+        const result = await this.safeParseAsync(data, params);
+        if (result.success)
+            return result.data;
+        throw result.error;
+    }
+    async safeParseAsync(data, params) {
+        const ctx = {
+            common: {
+                issues: [],
+                contextualErrorMap: params === null || params === void 0 ? void 0 : params.errorMap,
+                async: true,
+            },
+            path: (params === null || params === void 0 ? void 0 : params.path) || [],
+            schemaErrorMap: this._def.errorMap,
+            parent: null,
+            data,
+            parsedType: getParsedType(data),
+        };
+        const maybeAsyncResult = this._parse({ data, path: [], parent: ctx });
+        const result = await (isAsync(maybeAsyncResult)
+            ? maybeAsyncResult
+            : Promise.resolve(maybeAsyncResult));
+        return handleResult(ctx, result);
+    }
+    refine(check, message) {
+        const getIssueProperties = (val) => {
+            if (typeof message === "string" || typeof message === "undefined") {
+                return { message };
+            }
+            else if (typeof message === "function") {
+                return message(val);
+            }
+            else {
+                return message;
+            }
+        };
+        return this._refinement((val, ctx) => {
+            const result = check(val);
+            const setError = () => ctx.addIssue({
+                code: ZodIssueCode.custom,
+                ...getIssueProperties(val),
+            });
+            if (typeof Promise !== "undefined" && result instanceof Promise) {
+                return result.then((data) => {
+                    if (!data) {
+                        setError();
+                        return false;
+                    }
+                    else {
+                        return true;
+                    }
+                });
+            }
+            if (!result) {
+                setError();
+                return false;
+            }
+            else {
+                return true;
+            }
+        });
+    }
+    refinement(check, refinementData) {
+        return this._refinement((val, ctx) => {
+            if (!check(val)) {
+                ctx.addIssue(typeof refinementData === "function"
+                    ? refinementData(val, ctx)
+                    : refinementData);
+                return false;
+            }
+            else {
+                return true;
+            }
+        });
+    }
+    _refinement(refinement) {
+        return new ZodEffects({
+            schema: this,
+            typeName: ZodFirstPartyTypeKind.ZodEffects,
+            effect: { type: "refinement", refinement },
+        });
+    }
+    optional() {
+        return ZodOptional.create(this);
+    }
+    nullable() {
+        return ZodNullable.create(this);
+    }
+    nullish() {
+        return this.optional().nullable();
+    }
+    array() {
+        return ZodArray.create(this);
+    }
+    promise() {
+        return ZodPromise.create(this);
+    }
+    or(option) {
+        return ZodUnion.create([this, option]);
+    }
+    and(incoming) {
+        return ZodIntersection.create(this, incoming);
+    }
+    transform(transform) {
+        return new ZodEffects({
+            schema: this,
+            typeName: ZodFirstPartyTypeKind.ZodEffects,
+            effect: { type: "transform", transform },
+        });
+    }
+    default(def) {
+        const defaultValueFunc = typeof def === "function" ? def : () => def;
+        return new ZodDefault({
+            innerType: this,
+            defaultValue: defaultValueFunc,
+            typeName: ZodFirstPartyTypeKind.ZodDefault,
+        });
+    }
+    brand() {
+        return new ZodBranded({
+            typeName: ZodFirstPartyTypeKind.ZodBranded,
+            type: this,
+            ...processCreateParams(undefined),
+        });
+    }
+    describe(description) {
+        const This = this.constructor;
+        return new This({
+            ...this._def,
+            description,
+        });
+    }
+    isOptional() {
+        return this.safeParse(undefined).success;
+    }
+    isNullable() {
+        return this.safeParse(null).success;
+    }
+}
+const cuidRegex = /^c[^\s-]{8,}$/i;
+const uuidRegex = /^([a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}|00000000-0000-0000-0000-000000000000)$/i;
+// from https://stackoverflow.com/a/46181/1550155
+// old version: too slow, didn't support unicode
+// const emailRegex = /^((([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+(\.([a-z]|\d|[!#\$%&'\*\+\-\/=\?\^_`{\|}~]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])+)*)|((\x22)((((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(([\x01-\x08\x0b\x0c\x0e-\x1f\x7f]|\x21|[\x23-\x5b]|[\x5d-\x7e]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(\\([\x01-\x09\x0b\x0c\x0d-\x7f]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]))))*(((\x20|\x09)*(\x0d\x0a))?(\x20|\x09)+)?(\x22)))@((([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))$/i;
+// eslint-disable-next-line
+const emailRegex = /^(([^<>()[\]\.,;:\s@\"]+(\.[^<>()[\]\.,;:\s@\"]+)*)|(\".+\"))@(([^<>()[\]\.,;:\s@\"]+\.)+[^<>()[\]\.,;:\s@\"]{2,})$/i;
+class ZodString extends ZodType {
+    constructor() {
+        super(...arguments);
+        this._regex = (regex, validation, message) => this.refinement((data) => regex.test(data), {
+            validation,
+            code: ZodIssueCode.invalid_string,
+            ...errorUtil.errToObj(message),
+        });
+        /**
+         * @deprecated Use z.string().min(1) instead.
+         * @see {@link ZodString.min}
+         */
+        this.nonempty = (message) => this.min(1, errorUtil.errToObj(message));
+        this.trim = () => new ZodString({
+            ...this._def,
+            checks: [...this._def.checks, { kind: "trim" }],
+        });
+    }
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.string) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.string,
+                received: ctx.parsedType,
+            }
+            //
+            );
+            return INVALID;
+        }
+        const status = new ParseStatus();
+        let ctx = undefined;
+        for (const check of this._def.checks) {
+            if (check.kind === "min") {
+                if (input.data.length < check.value) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.too_small,
+                        minimum: check.value,
+                        type: "string",
+                        inclusive: true,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "max") {
+                if (input.data.length > check.value) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.too_big,
+                        maximum: check.value,
+                        type: "string",
+                        inclusive: true,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "email") {
+                if (!emailRegex.test(input.data)) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        validation: "email",
+                        code: ZodIssueCode.invalid_string,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "uuid") {
+                if (!uuidRegex.test(input.data)) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        validation: "uuid",
+                        code: ZodIssueCode.invalid_string,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "cuid") {
+                if (!cuidRegex.test(input.data)) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        validation: "cuid",
+                        code: ZodIssueCode.invalid_string,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "url") {
+                try {
+                    new URL(input.data);
+                }
+                catch (_a) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        validation: "url",
+                        code: ZodIssueCode.invalid_string,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "regex") {
+                check.regex.lastIndex = 0;
+                const testResult = check.regex.test(input.data);
+                if (!testResult) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        validation: "regex",
+                        code: ZodIssueCode.invalid_string,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "trim") {
+                input.data = input.data.trim();
+            }
+            else if (check.kind === "startsWith") {
+                if (!input.data.startsWith(check.value)) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.invalid_string,
+                        validation: { startsWith: check.value },
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "endsWith") {
+                if (!input.data.endsWith(check.value)) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.invalid_string,
+                        validation: { endsWith: check.value },
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else {
+                util.assertNever(check);
+            }
+        }
+        return { status: status.value, value: input.data };
+    }
+    _addCheck(check) {
+        return new ZodString({
+            ...this._def,
+            checks: [...this._def.checks, check],
+        });
+    }
+    email(message) {
+        return this._addCheck({ kind: "email", ...errorUtil.errToObj(message) });
+    }
+    url(message) {
+        return this._addCheck({ kind: "url", ...errorUtil.errToObj(message) });
+    }
+    uuid(message) {
+        return this._addCheck({ kind: "uuid", ...errorUtil.errToObj(message) });
+    }
+    cuid(message) {
+        return this._addCheck({ kind: "cuid", ...errorUtil.errToObj(message) });
+    }
+    regex(regex, message) {
+        return this._addCheck({
+            kind: "regex",
+            regex: regex,
+            ...errorUtil.errToObj(message),
+        });
+    }
+    startsWith(value, message) {
+        return this._addCheck({
+            kind: "startsWith",
+            value: value,
+            ...errorUtil.errToObj(message),
+        });
+    }
+    endsWith(value, message) {
+        return this._addCheck({
+            kind: "endsWith",
+            value: value,
+            ...errorUtil.errToObj(message),
+        });
+    }
+    min(minLength, message) {
+        return this._addCheck({
+            kind: "min",
+            value: minLength,
+            ...errorUtil.errToObj(message),
+        });
+    }
+    max(maxLength, message) {
+        return this._addCheck({
+            kind: "max",
+            value: maxLength,
+            ...errorUtil.errToObj(message),
+        });
+    }
+    length(len, message) {
+        return this.min(len, message).max(len, message);
+    }
+    get isEmail() {
+        return !!this._def.checks.find((ch) => ch.kind === "email");
+    }
+    get isURL() {
+        return !!this._def.checks.find((ch) => ch.kind === "url");
+    }
+    get isUUID() {
+        return !!this._def.checks.find((ch) => ch.kind === "uuid");
+    }
+    get isCUID() {
+        return !!this._def.checks.find((ch) => ch.kind === "cuid");
+    }
+    get minLength() {
+        let min = null;
+        for (const ch of this._def.checks) {
+            if (ch.kind === "min") {
+                if (min === null || ch.value > min)
+                    min = ch.value;
+            }
+        }
+        return min;
+    }
+    get maxLength() {
+        let max = null;
+        for (const ch of this._def.checks) {
+            if (ch.kind === "max") {
+                if (max === null || ch.value < max)
+                    max = ch.value;
+            }
+        }
+        return max;
+    }
+}
+ZodString.create = (params) => {
+    return new ZodString({
+        checks: [],
+        typeName: ZodFirstPartyTypeKind.ZodString,
+        ...processCreateParams(params),
+    });
+};
+// https://stackoverflow.com/questions/3966484/why-does-modulus-operator-return-fractional-number-in-javascript/31711034#31711034
+function floatSafeRemainder(val, step) {
+    const valDecCount = (val.toString().split(".")[1] || "").length;
+    const stepDecCount = (step.toString().split(".")[1] || "").length;
+    const decCount = valDecCount > stepDecCount ? valDecCount : stepDecCount;
+    const valInt = parseInt(val.toFixed(decCount).replace(".", ""));
+    const stepInt = parseInt(step.toFixed(decCount).replace(".", ""));
+    return (valInt % stepInt) / Math.pow(10, decCount);
+}
+class ZodNumber extends ZodType {
+    constructor() {
+        super(...arguments);
+        this.min = this.gte;
+        this.max = this.lte;
+        this.step = this.multipleOf;
+    }
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.number) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.number,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        let ctx = undefined;
+        const status = new ParseStatus();
+        for (const check of this._def.checks) {
+            if (check.kind === "int") {
+                if (!util.isInteger(input.data)) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.invalid_type,
+                        expected: "integer",
+                        received: "float",
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "min") {
+                const tooSmall = check.inclusive
+                    ? input.data < check.value
+                    : input.data <= check.value;
+                if (tooSmall) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.too_small,
+                        minimum: check.value,
+                        type: "number",
+                        inclusive: check.inclusive,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "max") {
+                const tooBig = check.inclusive
+                    ? input.data > check.value
+                    : input.data >= check.value;
+                if (tooBig) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.too_big,
+                        maximum: check.value,
+                        type: "number",
+                        inclusive: check.inclusive,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "multipleOf") {
+                if (floatSafeRemainder(input.data, check.value) !== 0) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.not_multiple_of,
+                        multipleOf: check.value,
+                        message: check.message,
+                    });
+                    status.dirty();
+                }
+            }
+            else {
+                util.assertNever(check);
+            }
+        }
+        return { status: status.value, value: input.data };
+    }
+    gte(value, message) {
+        return this.setLimit("min", value, true, errorUtil.toString(message));
+    }
+    gt(value, message) {
+        return this.setLimit("min", value, false, errorUtil.toString(message));
+    }
+    lte(value, message) {
+        return this.setLimit("max", value, true, errorUtil.toString(message));
+    }
+    lt(value, message) {
+        return this.setLimit("max", value, false, errorUtil.toString(message));
+    }
+    setLimit(kind, value, inclusive, message) {
+        return new ZodNumber({
+            ...this._def,
+            checks: [
+                ...this._def.checks,
+                {
+                    kind,
+                    value,
+                    inclusive,
+                    message: errorUtil.toString(message),
+                },
+            ],
+        });
+    }
+    _addCheck(check) {
+        return new ZodNumber({
+            ...this._def,
+            checks: [...this._def.checks, check],
+        });
+    }
+    int(message) {
+        return this._addCheck({
+            kind: "int",
+            message: errorUtil.toString(message),
+        });
+    }
+    positive(message) {
+        return this._addCheck({
+            kind: "min",
+            value: 0,
+            inclusive: false,
+            message: errorUtil.toString(message),
+        });
+    }
+    negative(message) {
+        return this._addCheck({
+            kind: "max",
+            value: 0,
+            inclusive: false,
+            message: errorUtil.toString(message),
+        });
+    }
+    nonpositive(message) {
+        return this._addCheck({
+            kind: "max",
+            value: 0,
+            inclusive: true,
+            message: errorUtil.toString(message),
+        });
+    }
+    nonnegative(message) {
+        return this._addCheck({
+            kind: "min",
+            value: 0,
+            inclusive: true,
+            message: errorUtil.toString(message),
+        });
+    }
+    multipleOf(value, message) {
+        return this._addCheck({
+            kind: "multipleOf",
+            value: value,
+            message: errorUtil.toString(message),
+        });
+    }
+    get minValue() {
+        let min = null;
+        for (const ch of this._def.checks) {
+            if (ch.kind === "min") {
+                if (min === null || ch.value > min)
+                    min = ch.value;
+            }
+        }
+        return min;
+    }
+    get maxValue() {
+        let max = null;
+        for (const ch of this._def.checks) {
+            if (ch.kind === "max") {
+                if (max === null || ch.value < max)
+                    max = ch.value;
+            }
+        }
+        return max;
+    }
+    get isInt() {
+        return !!this._def.checks.find((ch) => ch.kind === "int");
+    }
+}
+ZodNumber.create = (params) => {
+    return new ZodNumber({
+        checks: [],
+        typeName: ZodFirstPartyTypeKind.ZodNumber,
+        ...processCreateParams(params),
+    });
+};
+class ZodBigInt extends ZodType {
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.bigint) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.bigint,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        return OK(input.data);
+    }
+}
+ZodBigInt.create = (params) => {
+    return new ZodBigInt({
+        typeName: ZodFirstPartyTypeKind.ZodBigInt,
+        ...processCreateParams(params),
+    });
+};
+class ZodBoolean extends ZodType {
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.boolean) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.boolean,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        return OK(input.data);
+    }
+}
+ZodBoolean.create = (params) => {
+    return new ZodBoolean({
+        typeName: ZodFirstPartyTypeKind.ZodBoolean,
+        ...processCreateParams(params),
+    });
+};
+class ZodDate extends ZodType {
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.date) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.date,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        if (isNaN(input.data.getTime())) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_date,
+            });
+            return INVALID;
+        }
+        const status = new ParseStatus();
+        let ctx = undefined;
+        for (const check of this._def.checks) {
+            if (check.kind === "min") {
+                if (input.data.getTime() < check.value) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.too_small,
+                        message: check.message,
+                        inclusive: true,
+                        minimum: check.value,
+                        type: "date",
+                    });
+                    status.dirty();
+                }
+            }
+            else if (check.kind === "max") {
+                if (input.data.getTime() > check.value) {
+                    ctx = this._getOrReturnCtx(input, ctx);
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.too_big,
+                        message: check.message,
+                        inclusive: true,
+                        maximum: check.value,
+                        type: "date",
+                    });
+                    status.dirty();
+                }
+            }
+            else {
+                util.assertNever(check);
+            }
+        }
+        return {
+            status: status.value,
+            value: new Date(input.data.getTime()),
+        };
+    }
+    _addCheck(check) {
+        return new ZodDate({
+            ...this._def,
+            checks: [...this._def.checks, check],
+        });
+    }
+    min(minDate, message) {
+        return this._addCheck({
+            kind: "min",
+            value: minDate.getTime(),
+            message: errorUtil.toString(message),
+        });
+    }
+    max(maxDate, message) {
+        return this._addCheck({
+            kind: "max",
+            value: maxDate.getTime(),
+            message: errorUtil.toString(message),
+        });
+    }
+    get minDate() {
+        let min = null;
+        for (const ch of this._def.checks) {
+            if (ch.kind === "min") {
+                if (min === null || ch.value > min)
+                    min = ch.value;
+            }
+        }
+        return min != null ? new Date(min) : null;
+    }
+    get maxDate() {
+        let max = null;
+        for (const ch of this._def.checks) {
+            if (ch.kind === "max") {
+                if (max === null || ch.value < max)
+                    max = ch.value;
+            }
+        }
+        return max != null ? new Date(max) : null;
+    }
+}
+ZodDate.create = (params) => {
+    return new ZodDate({
+        checks: [],
+        typeName: ZodFirstPartyTypeKind.ZodDate,
+        ...processCreateParams(params),
+    });
+};
+class ZodUndefined extends ZodType {
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.undefined) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.undefined,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        return OK(input.data);
+    }
+}
+ZodUndefined.create = (params) => {
+    return new ZodUndefined({
+        typeName: ZodFirstPartyTypeKind.ZodUndefined,
+        ...processCreateParams(params),
+    });
+};
+class ZodNull extends ZodType {
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.null) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.null,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        return OK(input.data);
+    }
+}
+ZodNull.create = (params) => {
+    return new ZodNull({
+        typeName: ZodFirstPartyTypeKind.ZodNull,
+        ...processCreateParams(params),
+    });
+};
+class ZodAny extends ZodType {
+    constructor() {
+        super(...arguments);
+        // to prevent instances of other classes from extending ZodAny. this causes issues with catchall in ZodObject.
+        this._any = true;
+    }
+    _parse(input) {
+        return OK(input.data);
+    }
+}
+ZodAny.create = (params) => {
+    return new ZodAny({
+        typeName: ZodFirstPartyTypeKind.ZodAny,
+        ...processCreateParams(params),
+    });
+};
+class ZodUnknown extends ZodType {
+    constructor() {
+        super(...arguments);
+        // required
+        this._unknown = true;
+    }
+    _parse(input) {
+        return OK(input.data);
+    }
+}
+ZodUnknown.create = (params) => {
+    return new ZodUnknown({
+        typeName: ZodFirstPartyTypeKind.ZodUnknown,
+        ...processCreateParams(params),
+    });
+};
+class ZodNever extends ZodType {
+    _parse(input) {
+        const ctx = this._getOrReturnCtx(input);
+        addIssueToContext(ctx, {
+            code: ZodIssueCode.invalid_type,
+            expected: ZodParsedType.never,
+            received: ctx.parsedType,
+        });
+        return INVALID;
+    }
+}
+ZodNever.create = (params) => {
+    return new ZodNever({
+        typeName: ZodFirstPartyTypeKind.ZodNever,
+        ...processCreateParams(params),
+    });
+};
+class ZodVoid extends ZodType {
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.undefined) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.void,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        return OK(input.data);
+    }
+}
+ZodVoid.create = (params) => {
+    return new ZodVoid({
+        typeName: ZodFirstPartyTypeKind.ZodVoid,
+        ...processCreateParams(params),
+    });
+};
+class ZodArray extends ZodType {
+    _parse(input) {
+        const { ctx, status } = this._processInputParams(input);
+        const def = this._def;
+        if (ctx.parsedType !== ZodParsedType.array) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.array,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        if (def.minLength !== null) {
+            if (ctx.data.length < def.minLength.value) {
+                addIssueToContext(ctx, {
+                    code: ZodIssueCode.too_small,
+                    minimum: def.minLength.value,
+                    type: "array",
+                    inclusive: true,
+                    message: def.minLength.message,
+                });
+                status.dirty();
+            }
+        }
+        if (def.maxLength !== null) {
+            if (ctx.data.length > def.maxLength.value) {
+                addIssueToContext(ctx, {
+                    code: ZodIssueCode.too_big,
+                    maximum: def.maxLength.value,
+                    type: "array",
+                    inclusive: true,
+                    message: def.maxLength.message,
+                });
+                status.dirty();
+            }
+        }
+        if (ctx.common.async) {
+            return Promise.all(ctx.data.map((item, i) => {
+                return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+            })).then((result) => {
+                return ParseStatus.mergeArray(status, result);
+            });
+        }
+        const result = ctx.data.map((item, i) => {
+            return def.type._parseSync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+        });
+        return ParseStatus.mergeArray(status, result);
+    }
+    get element() {
+        return this._def.type;
+    }
+    min(minLength, message) {
+        return new ZodArray({
+            ...this._def,
+            minLength: { value: minLength, message: errorUtil.toString(message) },
+        });
+    }
+    max(maxLength, message) {
+        return new ZodArray({
+            ...this._def,
+            maxLength: { value: maxLength, message: errorUtil.toString(message) },
+        });
+    }
+    length(len, message) {
+        return this.min(len, message).max(len, message);
+    }
+    nonempty(message) {
+        return this.min(1, message);
+    }
+}
+ZodArray.create = (schema, params) => {
+    return new ZodArray({
+        type: schema,
+        minLength: null,
+        maxLength: null,
+        typeName: ZodFirstPartyTypeKind.ZodArray,
+        ...processCreateParams(params),
+    });
+};
+/////////////////////////////////////////
+/////////////////////////////////////////
+//////////                     //////////
+//////////      ZodObject      //////////
+//////////                     //////////
+/////////////////////////////////////////
+/////////////////////////////////////////
+var objectUtil;
+(function (objectUtil) {
+    objectUtil.mergeShapes = (first, second) => {
+        return {
+            ...first,
+            ...second,
+        };
+    };
+})(objectUtil || (objectUtil = {}));
+const AugmentFactory = (def) => (augmentation) => {
+    return new ZodObject({
+        ...def,
+        shape: () => ({
+            ...def.shape(),
+            ...augmentation,
+        }),
+    });
+};
+function deepPartialify(schema) {
+    if (schema instanceof ZodObject) {
+        const newShape = {};
+        for (const key in schema.shape) {
+            const fieldSchema = schema.shape[key];
+            newShape[key] = ZodOptional.create(deepPartialify(fieldSchema));
+        }
+        return new ZodObject({
+            ...schema._def,
+            shape: () => newShape,
+        });
+    }
+    else if (schema instanceof ZodArray) {
+        return ZodArray.create(deepPartialify(schema.element));
+    }
+    else if (schema instanceof ZodOptional) {
+        return ZodOptional.create(deepPartialify(schema.unwrap()));
+    }
+    else if (schema instanceof ZodNullable) {
+        return ZodNullable.create(deepPartialify(schema.unwrap()));
+    }
+    else if (schema instanceof ZodTuple) {
+        return ZodTuple.create(schema.items.map((item) => deepPartialify(item)));
+    }
+    else {
+        return schema;
+    }
+}
+class ZodObject extends ZodType {
+    constructor() {
+        super(...arguments);
+        this._cached = null;
+        /**
+         * @deprecated In most cases, this is no longer needed - unknown properties are now silently stripped.
+         * If you want to pass through unknown properties, use `.passthrough()` instead.
+         */
+        this.nonstrict = this.passthrough;
+        this.augment = AugmentFactory(this._def);
+        this.extend = AugmentFactory(this._def);
+    }
+    _getCached() {
+        if (this._cached !== null)
+            return this._cached;
+        const shape = this._def.shape();
+        const keys = util.objectKeys(shape);
+        return (this._cached = { shape, keys });
+    }
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.object) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.object,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        const { status, ctx } = this._processInputParams(input);
+        const { shape, keys: shapeKeys } = this._getCached();
+        const extraKeys = [];
+        if (!(this._def.catchall instanceof ZodNever &&
+            this._def.unknownKeys === "strip")) {
+            for (const key in ctx.data) {
+                if (!shapeKeys.includes(key)) {
+                    extraKeys.push(key);
+                }
+            }
+        }
+        const pairs = [];
+        for (const key of shapeKeys) {
+            const keyValidator = shape[key];
+            const value = ctx.data[key];
+            pairs.push({
+                key: { status: "valid", value: key },
+                value: keyValidator._parse(new ParseInputLazyPath(ctx, value, ctx.path, key)),
+                alwaysSet: key in ctx.data,
+            });
+        }
+        if (this._def.catchall instanceof ZodNever) {
+            const unknownKeys = this._def.unknownKeys;
+            if (unknownKeys === "passthrough") {
+                for (const key of extraKeys) {
+                    pairs.push({
+                        key: { status: "valid", value: key },
+                        value: { status: "valid", value: ctx.data[key] },
+                    });
+                }
+            }
+            else if (unknownKeys === "strict") {
+                if (extraKeys.length > 0) {
+                    addIssueToContext(ctx, {
+                        code: ZodIssueCode.unrecognized_keys,
+                        keys: extraKeys,
+                    });
+                    status.dirty();
+                }
+            }
+            else if (unknownKeys === "strip") ;
+            else {
+                throw new Error(`Internal ZodObject error: invalid unknownKeys value.`);
+            }
+        }
+        else {
+            // run catchall validation
+            const catchall = this._def.catchall;
+            for (const key of extraKeys) {
+                const value = ctx.data[key];
+                pairs.push({
+                    key: { status: "valid", value: key },
+                    value: catchall._parse(new ParseInputLazyPath(ctx, value, ctx.path, key) //, ctx.child(key), value, getParsedType(value)
+                    ),
+                    alwaysSet: key in ctx.data,
+                });
+            }
+        }
+        if (ctx.common.async) {
+            return Promise.resolve()
+                .then(async () => {
+                const syncPairs = [];
+                for (const pair of pairs) {
+                    const key = await pair.key;
+                    syncPairs.push({
+                        key,
+                        value: await pair.value,
+                        alwaysSet: pair.alwaysSet,
+                    });
+                }
+                return syncPairs;
+            })
+                .then((syncPairs) => {
+                return ParseStatus.mergeObjectSync(status, syncPairs);
+            });
+        }
+        else {
+            return ParseStatus.mergeObjectSync(status, pairs);
+        }
+    }
+    get shape() {
+        return this._def.shape();
+    }
+    strict(message) {
+        errorUtil.errToObj;
+        return new ZodObject({
+            ...this._def,
+            unknownKeys: "strict",
+            ...(message !== undefined
+                ? {
+                    errorMap: (issue, ctx) => {
+                        var _a, _b, _c, _d;
+                        const defaultError = (_c = (_b = (_a = this._def).errorMap) === null || _b === void 0 ? void 0 : _b.call(_a, issue, ctx).message) !== null && _c !== void 0 ? _c : ctx.defaultError;
+                        if (issue.code === "unrecognized_keys")
+                            return {
+                                message: (_d = errorUtil.errToObj(message).message) !== null && _d !== void 0 ? _d : defaultError,
+                            };
+                        return {
+                            message: defaultError,
+                        };
+                    },
+                }
+                : {}),
+        });
+    }
+    strip() {
+        return new ZodObject({
+            ...this._def,
+            unknownKeys: "strip",
+        });
+    }
+    passthrough() {
+        return new ZodObject({
+            ...this._def,
+            unknownKeys: "passthrough",
+        });
+    }
+    setKey(key, schema) {
+        return this.augment({ [key]: schema });
+    }
+    /**
+     * Prior to zod@1.0.12 there was a bug in the
+     * inferred type of merged objects. Please
+     * upgrade if you are experiencing issues.
+     */
+    merge(merging) {
+        // const mergedShape = objectUtil.mergeShapes(
+        //   this._def.shape(),
+        //   merging._def.shape()
+        // );
+        const merged = new ZodObject({
+            unknownKeys: merging._def.unknownKeys,
+            catchall: merging._def.catchall,
+            shape: () => objectUtil.mergeShapes(this._def.shape(), merging._def.shape()),
+            typeName: ZodFirstPartyTypeKind.ZodObject,
+        });
+        return merged;
+    }
+    catchall(index) {
+        return new ZodObject({
+            ...this._def,
+            catchall: index,
+        });
+    }
+    pick(mask) {
+        const shape = {};
+        util.objectKeys(mask).map((key) => {
+            // only add to shape if key corresponds to an element of the current shape
+            if (this.shape[key])
+                shape[key] = this.shape[key];
+        });
+        return new ZodObject({
+            ...this._def,
+            shape: () => shape,
+        });
+    }
+    omit(mask) {
+        const shape = {};
+        util.objectKeys(this.shape).map((key) => {
+            if (util.objectKeys(mask).indexOf(key) === -1) {
+                shape[key] = this.shape[key];
+            }
+        });
+        return new ZodObject({
+            ...this._def,
+            shape: () => shape,
+        });
+    }
+    deepPartial() {
+        return deepPartialify(this);
+    }
+    partial(mask) {
+        const newShape = {};
+        if (mask) {
+            util.objectKeys(this.shape).map((key) => {
+                if (util.objectKeys(mask).indexOf(key) === -1) {
+                    newShape[key] = this.shape[key];
+                }
+                else {
+                    newShape[key] = this.shape[key].optional();
+                }
+            });
+            return new ZodObject({
+                ...this._def,
+                shape: () => newShape,
+            });
+        }
+        else {
+            for (const key in this.shape) {
+                const fieldSchema = this.shape[key];
+                newShape[key] = fieldSchema.optional();
+            }
+        }
+        return new ZodObject({
+            ...this._def,
+            shape: () => newShape,
+        });
+    }
+    required() {
+        const newShape = {};
+        for (const key in this.shape) {
+            const fieldSchema = this.shape[key];
+            let newField = fieldSchema;
+            while (newField instanceof ZodOptional) {
+                newField = newField._def.innerType;
+            }
+            newShape[key] = newField;
+        }
+        return new ZodObject({
+            ...this._def,
+            shape: () => newShape,
+        });
+    }
+    keyof() {
+        return createZodEnum(util.objectKeys(this.shape));
+    }
+}
+ZodObject.create = (shape, params) => {
+    return new ZodObject({
+        shape: () => shape,
+        unknownKeys: "strip",
+        catchall: ZodNever.create(),
+        typeName: ZodFirstPartyTypeKind.ZodObject,
+        ...processCreateParams(params),
+    });
+};
+ZodObject.strictCreate = (shape, params) => {
+    return new ZodObject({
+        shape: () => shape,
+        unknownKeys: "strict",
+        catchall: ZodNever.create(),
+        typeName: ZodFirstPartyTypeKind.ZodObject,
+        ...processCreateParams(params),
+    });
+};
+ZodObject.lazycreate = (shape, params) => {
+    return new ZodObject({
+        shape,
+        unknownKeys: "strip",
+        catchall: ZodNever.create(),
+        typeName: ZodFirstPartyTypeKind.ZodObject,
+        ...processCreateParams(params),
+    });
+};
+class ZodUnion extends ZodType {
+    _parse(input) {
+        const { ctx } = this._processInputParams(input);
+        const options = this._def.options;
+        function handleResults(results) {
+            // return first issue-free validation if it exists
+            for (const result of results) {
+                if (result.result.status === "valid") {
+                    return result.result;
+                }
+            }
+            for (const result of results) {
+                if (result.result.status === "dirty") {
+                    // add issues from dirty option
+                    ctx.common.issues.push(...result.ctx.common.issues);
+                    return result.result;
+                }
+            }
+            // return invalid
+            const unionErrors = results.map((result) => new ZodError(result.ctx.common.issues));
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_union,
+                unionErrors,
+            });
+            return INVALID;
+        }
+        if (ctx.common.async) {
+            return Promise.all(options.map(async (option) => {
+                const childCtx = {
+                    ...ctx,
+                    common: {
+                        ...ctx.common,
+                        issues: [],
+                    },
+                    parent: null,
+                };
+                return {
+                    result: await option._parseAsync({
+                        data: ctx.data,
+                        path: ctx.path,
+                        parent: childCtx,
+                    }),
+                    ctx: childCtx,
+                };
+            })).then(handleResults);
+        }
+        else {
+            let dirty = undefined;
+            const issues = [];
+            for (const option of options) {
+                const childCtx = {
+                    ...ctx,
+                    common: {
+                        ...ctx.common,
+                        issues: [],
+                    },
+                    parent: null,
+                };
+                const result = option._parseSync({
+                    data: ctx.data,
+                    path: ctx.path,
+                    parent: childCtx,
+                });
+                if (result.status === "valid") {
+                    return result;
+                }
+                else if (result.status === "dirty" && !dirty) {
+                    dirty = { result, ctx: childCtx };
+                }
+                if (childCtx.common.issues.length) {
+                    issues.push(childCtx.common.issues);
+                }
+            }
+            if (dirty) {
+                ctx.common.issues.push(...dirty.ctx.common.issues);
+                return dirty.result;
+            }
+            const unionErrors = issues.map((issues) => new ZodError(issues));
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_union,
+                unionErrors,
+            });
+            return INVALID;
+        }
+    }
+    get options() {
+        return this._def.options;
+    }
+}
+ZodUnion.create = (types, params) => {
+    return new ZodUnion({
+        options: types,
+        typeName: ZodFirstPartyTypeKind.ZodUnion,
+        ...processCreateParams(params),
+    });
+};
+class ZodDiscriminatedUnion extends ZodType {
+    _parse(input) {
+        const { ctx } = this._processInputParams(input);
+        if (ctx.parsedType !== ZodParsedType.object) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.object,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        const discriminator = this.discriminator;
+        const discriminatorValue = ctx.data[discriminator];
+        const option = this.options.get(discriminatorValue);
+        if (!option) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_union_discriminator,
+                options: this.validDiscriminatorValues,
+                path: [discriminator],
+            });
+            return INVALID;
+        }
+        if (ctx.common.async) {
+            return option._parseAsync({
+                data: ctx.data,
+                path: ctx.path,
+                parent: ctx,
+            });
+        }
+        else {
+            return option._parseSync({
+                data: ctx.data,
+                path: ctx.path,
+                parent: ctx,
+            });
+        }
+    }
+    get discriminator() {
+        return this._def.discriminator;
+    }
+    get validDiscriminatorValues() {
+        return Array.from(this.options.keys());
+    }
+    get options() {
+        return this._def.options;
+    }
+    /**
+     * The constructor of the discriminated union schema. Its behaviour is very similar to that of the normal z.union() constructor.
+     * However, it only allows a union of objects, all of which need to share a discriminator property. This property must
+     * have a different value for each object in the union.
+     * @param discriminator the name of the discriminator property
+     * @param types an array of object schemas
+     * @param params
+     */
+    static create(discriminator, types, params) {
+        // Get all the valid discriminator values
+        const options = new Map();
+        try {
+            types.forEach((type) => {
+                const discriminatorValue = type.shape[discriminator].value;
+                options.set(discriminatorValue, type);
+            });
+        }
+        catch (e) {
+            throw new Error("The discriminator value could not be extracted from all the provided schemas");
+        }
+        // Assert that all the discriminator values are unique
+        if (options.size !== types.length) {
+            throw new Error("Some of the discriminator values are not unique");
+        }
+        return new ZodDiscriminatedUnion({
+            typeName: ZodFirstPartyTypeKind.ZodDiscriminatedUnion,
+            discriminator,
+            options,
+            ...processCreateParams(params),
+        });
+    }
+}
+function mergeValues(a, b) {
+    const aType = getParsedType(a);
+    const bType = getParsedType(b);
+    if (a === b) {
+        return { valid: true, data: a };
+    }
+    else if (aType === ZodParsedType.object && bType === ZodParsedType.object) {
+        const bKeys = util.objectKeys(b);
+        const sharedKeys = util
+            .objectKeys(a)
+            .filter((key) => bKeys.indexOf(key) !== -1);
+        const newObj = { ...a, ...b };
+        for (const key of sharedKeys) {
+            const sharedValue = mergeValues(a[key], b[key]);
+            if (!sharedValue.valid) {
+                return { valid: false };
+            }
+            newObj[key] = sharedValue.data;
+        }
+        return { valid: true, data: newObj };
+    }
+    else if (aType === ZodParsedType.array && bType === ZodParsedType.array) {
+        if (a.length !== b.length) {
+            return { valid: false };
+        }
+        const newArray = [];
+        for (let index = 0; index < a.length; index++) {
+            const itemA = a[index];
+            const itemB = b[index];
+            const sharedValue = mergeValues(itemA, itemB);
+            if (!sharedValue.valid) {
+                return { valid: false };
+            }
+            newArray.push(sharedValue.data);
+        }
+        return { valid: true, data: newArray };
+    }
+    else if (aType === ZodParsedType.date &&
+        bType === ZodParsedType.date &&
+        +a === +b) {
+        return { valid: true, data: a };
+    }
+    else {
+        return { valid: false };
+    }
+}
+class ZodIntersection extends ZodType {
+    _parse(input) {
+        const { status, ctx } = this._processInputParams(input);
+        const handleParsed = (parsedLeft, parsedRight) => {
+            if (isAborted(parsedLeft) || isAborted(parsedRight)) {
+                return INVALID;
+            }
+            const merged = mergeValues(parsedLeft.value, parsedRight.value);
+            if (!merged.valid) {
+                addIssueToContext(ctx, {
+                    code: ZodIssueCode.invalid_intersection_types,
+                });
+                return INVALID;
+            }
+            if (isDirty(parsedLeft) || isDirty(parsedRight)) {
+                status.dirty();
+            }
+            return { status: status.value, value: merged.data };
+        };
+        if (ctx.common.async) {
+            return Promise.all([
+                this._def.left._parseAsync({
+                    data: ctx.data,
+                    path: ctx.path,
+                    parent: ctx,
+                }),
+                this._def.right._parseAsync({
+                    data: ctx.data,
+                    path: ctx.path,
+                    parent: ctx,
+                }),
+            ]).then(([left, right]) => handleParsed(left, right));
+        }
+        else {
+            return handleParsed(this._def.left._parseSync({
+                data: ctx.data,
+                path: ctx.path,
+                parent: ctx,
+            }), this._def.right._parseSync({
+                data: ctx.data,
+                path: ctx.path,
+                parent: ctx,
+            }));
+        }
+    }
+}
+ZodIntersection.create = (left, right, params) => {
+    return new ZodIntersection({
+        left: left,
+        right: right,
+        typeName: ZodFirstPartyTypeKind.ZodIntersection,
+        ...processCreateParams(params),
+    });
+};
+class ZodTuple extends ZodType {
+    _parse(input) {
+        const { status, ctx } = this._processInputParams(input);
+        if (ctx.parsedType !== ZodParsedType.array) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.array,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        if (ctx.data.length < this._def.items.length) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.too_small,
+                minimum: this._def.items.length,
+                inclusive: true,
+                type: "array",
+            });
+            return INVALID;
+        }
+        const rest = this._def.rest;
+        if (!rest && ctx.data.length > this._def.items.length) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.too_big,
+                maximum: this._def.items.length,
+                inclusive: true,
+                type: "array",
+            });
+            status.dirty();
+        }
+        const items = ctx.data
+            .map((item, itemIndex) => {
+            const schema = this._def.items[itemIndex] || this._def.rest;
+            if (!schema)
+                return null;
+            return schema._parse(new ParseInputLazyPath(ctx, item, ctx.path, itemIndex));
+        })
+            .filter((x) => !!x); // filter nulls
+        if (ctx.common.async) {
+            return Promise.all(items).then((results) => {
+                return ParseStatus.mergeArray(status, results);
+            });
+        }
+        else {
+            return ParseStatus.mergeArray(status, items);
+        }
+    }
+    get items() {
+        return this._def.items;
+    }
+    rest(rest) {
+        return new ZodTuple({
+            ...this._def,
+            rest,
+        });
+    }
+}
+ZodTuple.create = (schemas, params) => {
+    if (!Array.isArray(schemas)) {
+        throw new Error("You must pass an array of schemas to z.tuple([ ... ])");
+    }
+    return new ZodTuple({
+        items: schemas,
+        typeName: ZodFirstPartyTypeKind.ZodTuple,
+        rest: null,
+        ...processCreateParams(params),
+    });
+};
+class ZodRecord extends ZodType {
+    get keySchema() {
+        return this._def.keyType;
+    }
+    get valueSchema() {
+        return this._def.valueType;
+    }
+    _parse(input) {
+        const { status, ctx } = this._processInputParams(input);
+        if (ctx.parsedType !== ZodParsedType.object) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.object,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        const pairs = [];
+        const keyType = this._def.keyType;
+        const valueType = this._def.valueType;
+        for (const key in ctx.data) {
+            pairs.push({
+                key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, key)),
+                value: valueType._parse(new ParseInputLazyPath(ctx, ctx.data[key], ctx.path, key)),
+            });
+        }
+        if (ctx.common.async) {
+            return ParseStatus.mergeObjectAsync(status, pairs);
+        }
+        else {
+            return ParseStatus.mergeObjectSync(status, pairs);
+        }
+    }
+    get element() {
+        return this._def.valueType;
+    }
+    static create(first, second, third) {
+        if (second instanceof ZodType) {
+            return new ZodRecord({
+                keyType: first,
+                valueType: second,
+                typeName: ZodFirstPartyTypeKind.ZodRecord,
+                ...processCreateParams(third),
+            });
+        }
+        return new ZodRecord({
+            keyType: ZodString.create(),
+            valueType: first,
+            typeName: ZodFirstPartyTypeKind.ZodRecord,
+            ...processCreateParams(second),
+        });
+    }
+}
+class ZodMap extends ZodType {
+    _parse(input) {
+        const { status, ctx } = this._processInputParams(input);
+        if (ctx.parsedType !== ZodParsedType.map) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.map,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        const keyType = this._def.keyType;
+        const valueType = this._def.valueType;
+        const pairs = [...ctx.data.entries()].map(([key, value], index) => {
+            return {
+                key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, [index, "key"])),
+                value: valueType._parse(new ParseInputLazyPath(ctx, value, ctx.path, [index, "value"])),
+            };
+        });
+        if (ctx.common.async) {
+            const finalMap = new Map();
+            return Promise.resolve().then(async () => {
+                for (const pair of pairs) {
+                    const key = await pair.key;
+                    const value = await pair.value;
+                    if (key.status === "aborted" || value.status === "aborted") {
+                        return INVALID;
+                    }
+                    if (key.status === "dirty" || value.status === "dirty") {
+                        status.dirty();
+                    }
+                    finalMap.set(key.value, value.value);
+                }
+                return { status: status.value, value: finalMap };
+            });
+        }
+        else {
+            const finalMap = new Map();
+            for (const pair of pairs) {
+                const key = pair.key;
+                const value = pair.value;
+                if (key.status === "aborted" || value.status === "aborted") {
+                    return INVALID;
+                }
+                if (key.status === "dirty" || value.status === "dirty") {
+                    status.dirty();
+                }
+                finalMap.set(key.value, value.value);
+            }
+            return { status: status.value, value: finalMap };
+        }
+    }
+}
+ZodMap.create = (keyType, valueType, params) => {
+    return new ZodMap({
+        valueType,
+        keyType,
+        typeName: ZodFirstPartyTypeKind.ZodMap,
+        ...processCreateParams(params),
+    });
+};
+class ZodSet extends ZodType {
+    _parse(input) {
+        const { status, ctx } = this._processInputParams(input);
+        if (ctx.parsedType !== ZodParsedType.set) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.set,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        const def = this._def;
+        if (def.minSize !== null) {
+            if (ctx.data.size < def.minSize.value) {
+                addIssueToContext(ctx, {
+                    code: ZodIssueCode.too_small,
+                    minimum: def.minSize.value,
+                    type: "set",
+                    inclusive: true,
+                    message: def.minSize.message,
+                });
+                status.dirty();
+            }
+        }
+        if (def.maxSize !== null) {
+            if (ctx.data.size > def.maxSize.value) {
+                addIssueToContext(ctx, {
+                    code: ZodIssueCode.too_big,
+                    maximum: def.maxSize.value,
+                    type: "set",
+                    inclusive: true,
+                    message: def.maxSize.message,
+                });
+                status.dirty();
+            }
+        }
+        const valueType = this._def.valueType;
+        function finalizeSet(elements) {
+            const parsedSet = new Set();
+            for (const element of elements) {
+                if (element.status === "aborted")
+                    return INVALID;
+                if (element.status === "dirty")
+                    status.dirty();
+                parsedSet.add(element.value);
+            }
+            return { status: status.value, value: parsedSet };
+        }
+        const elements = [...ctx.data.values()].map((item, i) => valueType._parse(new ParseInputLazyPath(ctx, item, ctx.path, i)));
+        if (ctx.common.async) {
+            return Promise.all(elements).then((elements) => finalizeSet(elements));
+        }
+        else {
+            return finalizeSet(elements);
+        }
+    }
+    min(minSize, message) {
+        return new ZodSet({
+            ...this._def,
+            minSize: { value: minSize, message: errorUtil.toString(message) },
+        });
+    }
+    max(maxSize, message) {
+        return new ZodSet({
+            ...this._def,
+            maxSize: { value: maxSize, message: errorUtil.toString(message) },
+        });
+    }
+    size(size, message) {
+        return this.min(size, message).max(size, message);
+    }
+    nonempty(message) {
+        return this.min(1, message);
+    }
+}
+ZodSet.create = (valueType, params) => {
+    return new ZodSet({
+        valueType,
+        minSize: null,
+        maxSize: null,
+        typeName: ZodFirstPartyTypeKind.ZodSet,
+        ...processCreateParams(params),
+    });
+};
+class ZodFunction extends ZodType {
+    constructor() {
+        super(...arguments);
+        this.validate = this.implement;
+    }
+    _parse(input) {
+        const { ctx } = this._processInputParams(input);
+        if (ctx.parsedType !== ZodParsedType.function) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.function,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        function makeArgsIssue(args, error) {
+            return makeIssue({
+                data: args,
+                path: ctx.path,
+                errorMaps: [
+                    ctx.common.contextualErrorMap,
+                    ctx.schemaErrorMap,
+                    getErrorMap(),
+                    errorMap,
+                ].filter((x) => !!x),
+                issueData: {
+                    code: ZodIssueCode.invalid_arguments,
+                    argumentsError: error,
+                },
+            });
+        }
+        function makeReturnsIssue(returns, error) {
+            return makeIssue({
+                data: returns,
+                path: ctx.path,
+                errorMaps: [
+                    ctx.common.contextualErrorMap,
+                    ctx.schemaErrorMap,
+                    getErrorMap(),
+                    errorMap,
+                ].filter((x) => !!x),
+                issueData: {
+                    code: ZodIssueCode.invalid_return_type,
+                    returnTypeError: error,
+                },
+            });
+        }
+        const params = { errorMap: ctx.common.contextualErrorMap };
+        const fn = ctx.data;
+        if (this._def.returns instanceof ZodPromise) {
+            return OK(async (...args) => {
+                const error = new ZodError([]);
+                const parsedArgs = await this._def.args
+                    .parseAsync(args, params)
+                    .catch((e) => {
+                    error.addIssue(makeArgsIssue(args, e));
+                    throw error;
+                });
+                const result = await fn(...parsedArgs);
+                const parsedReturns = await this._def.returns._def.type
+                    .parseAsync(result, params)
+                    .catch((e) => {
+                    error.addIssue(makeReturnsIssue(result, e));
+                    throw error;
+                });
+                return parsedReturns;
+            });
+        }
+        else {
+            return OK((...args) => {
+                const parsedArgs = this._def.args.safeParse(args, params);
+                if (!parsedArgs.success) {
+                    throw new ZodError([makeArgsIssue(args, parsedArgs.error)]);
+                }
+                const result = fn(...parsedArgs.data);
+                const parsedReturns = this._def.returns.safeParse(result, params);
+                if (!parsedReturns.success) {
+                    throw new ZodError([makeReturnsIssue(result, parsedReturns.error)]);
+                }
+                return parsedReturns.data;
+            });
+        }
+    }
+    parameters() {
+        return this._def.args;
+    }
+    returnType() {
+        return this._def.returns;
+    }
+    args(...items) {
+        return new ZodFunction({
+            ...this._def,
+            args: ZodTuple.create(items).rest(ZodUnknown.create()),
+        });
+    }
+    returns(returnType) {
+        return new ZodFunction({
+            ...this._def,
+            returns: returnType,
+        });
+    }
+    implement(func) {
+        const validatedFunc = this.parse(func);
+        return validatedFunc;
+    }
+    strictImplement(func) {
+        const validatedFunc = this.parse(func);
+        return validatedFunc;
+    }
+    static create(args, returns, params) {
+        return new ZodFunction({
+            args: (args
+                ? args
+                : ZodTuple.create([]).rest(ZodUnknown.create())),
+            returns: returns || ZodUnknown.create(),
+            typeName: ZodFirstPartyTypeKind.ZodFunction,
+            ...processCreateParams(params),
+        });
+    }
+}
+class ZodLazy extends ZodType {
+    get schema() {
+        return this._def.getter();
+    }
+    _parse(input) {
+        const { ctx } = this._processInputParams(input);
+        const lazySchema = this._def.getter();
+        return lazySchema._parse({ data: ctx.data, path: ctx.path, parent: ctx });
+    }
+}
+ZodLazy.create = (getter, params) => {
+    return new ZodLazy({
+        getter: getter,
+        typeName: ZodFirstPartyTypeKind.ZodLazy,
+        ...processCreateParams(params),
+    });
+};
+class ZodLiteral extends ZodType {
+    _parse(input) {
+        if (input.data !== this._def.value) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_literal,
+                expected: this._def.value,
+            });
+            return INVALID;
+        }
+        return { status: "valid", value: input.data };
+    }
+    get value() {
+        return this._def.value;
+    }
+}
+ZodLiteral.create = (value, params) => {
+    return new ZodLiteral({
+        value: value,
+        typeName: ZodFirstPartyTypeKind.ZodLiteral,
+        ...processCreateParams(params),
+    });
+};
+function createZodEnum(values, params) {
+    return new ZodEnum({
+        values: values,
+        typeName: ZodFirstPartyTypeKind.ZodEnum,
+        ...processCreateParams(params),
+    });
+}
+class ZodEnum extends ZodType {
+    _parse(input) {
+        if (typeof input.data !== "string") {
+            const ctx = this._getOrReturnCtx(input);
+            const expectedValues = this._def.values;
+            addIssueToContext(ctx, {
+                expected: util.joinValues(expectedValues),
+                received: ctx.parsedType,
+                code: ZodIssueCode.invalid_type,
+            });
+            return INVALID;
+        }
+        if (this._def.values.indexOf(input.data) === -1) {
+            const ctx = this._getOrReturnCtx(input);
+            const expectedValues = this._def.values;
+            addIssueToContext(ctx, {
+                received: ctx.data,
+                code: ZodIssueCode.invalid_enum_value,
+                options: expectedValues,
+            });
+            return INVALID;
+        }
+        return OK(input.data);
+    }
+    get options() {
+        return this._def.values;
+    }
+    get enum() {
+        const enumValues = {};
+        for (const val of this._def.values) {
+            enumValues[val] = val;
+        }
+        return enumValues;
+    }
+    get Values() {
+        const enumValues = {};
+        for (const val of this._def.values) {
+            enumValues[val] = val;
+        }
+        return enumValues;
+    }
+    get Enum() {
+        const enumValues = {};
+        for (const val of this._def.values) {
+            enumValues[val] = val;
+        }
+        return enumValues;
+    }
+}
+ZodEnum.create = createZodEnum;
+class ZodNativeEnum extends ZodType {
+    _parse(input) {
+        const nativeEnumValues = util.getValidEnumValues(this._def.values);
+        const ctx = this._getOrReturnCtx(input);
+        if (ctx.parsedType !== ZodParsedType.string &&
+            ctx.parsedType !== ZodParsedType.number) {
+            const expectedValues = util.objectValues(nativeEnumValues);
+            addIssueToContext(ctx, {
+                expected: util.joinValues(expectedValues),
+                received: ctx.parsedType,
+                code: ZodIssueCode.invalid_type,
+            });
+            return INVALID;
+        }
+        if (nativeEnumValues.indexOf(input.data) === -1) {
+            const expectedValues = util.objectValues(nativeEnumValues);
+            addIssueToContext(ctx, {
+                received: ctx.data,
+                code: ZodIssueCode.invalid_enum_value,
+                options: expectedValues,
+            });
+            return INVALID;
+        }
+        return OK(input.data);
+    }
+    get enum() {
+        return this._def.values;
+    }
+}
+ZodNativeEnum.create = (values, params) => {
+    return new ZodNativeEnum({
+        values: values,
+        typeName: ZodFirstPartyTypeKind.ZodNativeEnum,
+        ...processCreateParams(params),
+    });
+};
+class ZodPromise extends ZodType {
+    _parse(input) {
+        const { ctx } = this._processInputParams(input);
+        if (ctx.parsedType !== ZodParsedType.promise &&
+            ctx.common.async === false) {
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.promise,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        const promisified = ctx.parsedType === ZodParsedType.promise
+            ? ctx.data
+            : Promise.resolve(ctx.data);
+        return OK(promisified.then((data) => {
+            return this._def.type.parseAsync(data, {
+                path: ctx.path,
+                errorMap: ctx.common.contextualErrorMap,
+            });
+        }));
+    }
+}
+ZodPromise.create = (schema, params) => {
+    return new ZodPromise({
+        type: schema,
+        typeName: ZodFirstPartyTypeKind.ZodPromise,
+        ...processCreateParams(params),
+    });
+};
+class ZodEffects extends ZodType {
+    innerType() {
+        return this._def.schema;
+    }
+    _parse(input) {
+        const { status, ctx } = this._processInputParams(input);
+        const effect = this._def.effect || null;
+        if (effect.type === "preprocess") {
+            const processed = effect.transform(ctx.data);
+            if (ctx.common.async) {
+                return Promise.resolve(processed).then((processed) => {
+                    return this._def.schema._parseAsync({
+                        data: processed,
+                        path: ctx.path,
+                        parent: ctx,
+                    });
+                });
+            }
+            else {
+                return this._def.schema._parseSync({
+                    data: processed,
+                    path: ctx.path,
+                    parent: ctx,
+                });
+            }
+        }
+        const checkCtx = {
+            addIssue: (arg) => {
+                addIssueToContext(ctx, arg);
+                if (arg.fatal) {
+                    status.abort();
+                }
+                else {
+                    status.dirty();
+                }
+            },
+            get path() {
+                return ctx.path;
+            },
+        };
+        checkCtx.addIssue = checkCtx.addIssue.bind(checkCtx);
+        if (effect.type === "refinement") {
+            const executeRefinement = (acc
+            // effect: RefinementEffect<any>
+            ) => {
+                const result = effect.refinement(acc, checkCtx);
+                if (ctx.common.async) {
+                    return Promise.resolve(result);
+                }
+                if (result instanceof Promise) {
+                    throw new Error("Async refinement encountered during synchronous parse operation. Use .parseAsync instead.");
+                }
+                return acc;
+            };
+            if (ctx.common.async === false) {
+                const inner = this._def.schema._parseSync({
+                    data: ctx.data,
+                    path: ctx.path,
+                    parent: ctx,
+                });
+                if (inner.status === "aborted")
+                    return INVALID;
+                if (inner.status === "dirty")
+                    status.dirty();
+                // return value is ignored
+                executeRefinement(inner.value);
+                return { status: status.value, value: inner.value };
+            }
+            else {
+                return this._def.schema
+                    ._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx })
+                    .then((inner) => {
+                    if (inner.status === "aborted")
+                        return INVALID;
+                    if (inner.status === "dirty")
+                        status.dirty();
+                    return executeRefinement(inner.value).then(() => {
+                        return { status: status.value, value: inner.value };
+                    });
+                });
+            }
+        }
+        if (effect.type === "transform") {
+            if (ctx.common.async === false) {
+                const base = this._def.schema._parseSync({
+                    data: ctx.data,
+                    path: ctx.path,
+                    parent: ctx,
+                });
+                // if (base.status === "aborted") return INVALID;
+                // if (base.status === "dirty") {
+                //   return { status: "dirty", value: base.value };
+                // }
+                if (!isValid(base))
+                    return base;
+                const result = effect.transform(base.value, checkCtx);
+                if (result instanceof Promise) {
+                    throw new Error(`Asynchronous transform encountered during synchronous parse operation. Use .parseAsync instead.`);
+                }
+                return { status: status.value, value: result };
+            }
+            else {
+                return this._def.schema
+                    ._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx })
+                    .then((base) => {
+                    if (!isValid(base))
+                        return base;
+                    // if (base.status === "aborted") return INVALID;
+                    // if (base.status === "dirty") {
+                    //   return { status: "dirty", value: base.value };
+                    // }
+                    return Promise.resolve(effect.transform(base.value, checkCtx)).then((result) => ({ status: status.value, value: result }));
+                });
+            }
+        }
+        util.assertNever(effect);
+    }
+}
+ZodEffects.create = (schema, effect, params) => {
+    return new ZodEffects({
+        schema,
+        typeName: ZodFirstPartyTypeKind.ZodEffects,
+        effect,
+        ...processCreateParams(params),
+    });
+};
+ZodEffects.createWithPreprocess = (preprocess, schema, params) => {
+    return new ZodEffects({
+        schema,
+        effect: { type: "preprocess", transform: preprocess },
+        typeName: ZodFirstPartyTypeKind.ZodEffects,
+        ...processCreateParams(params),
+    });
+};
+class ZodOptional extends ZodType {
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType === ZodParsedType.undefined) {
+            return OK(undefined);
+        }
+        return this._def.innerType._parse(input);
+    }
+    unwrap() {
+        return this._def.innerType;
+    }
+}
+ZodOptional.create = (type, params) => {
+    return new ZodOptional({
+        innerType: type,
+        typeName: ZodFirstPartyTypeKind.ZodOptional,
+        ...processCreateParams(params),
+    });
+};
+class ZodNullable extends ZodType {
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType === ZodParsedType.null) {
+            return OK(null);
+        }
+        return this._def.innerType._parse(input);
+    }
+    unwrap() {
+        return this._def.innerType;
+    }
+}
+ZodNullable.create = (type, params) => {
+    return new ZodNullable({
+        innerType: type,
+        typeName: ZodFirstPartyTypeKind.ZodNullable,
+        ...processCreateParams(params),
+    });
+};
+class ZodDefault extends ZodType {
+    _parse(input) {
+        const { ctx } = this._processInputParams(input);
+        let data = ctx.data;
+        if (ctx.parsedType === ZodParsedType.undefined) {
+            data = this._def.defaultValue();
+        }
+        return this._def.innerType._parse({
+            data,
+            path: ctx.path,
+            parent: ctx,
+        });
+    }
+    removeDefault() {
+        return this._def.innerType;
+    }
+}
+ZodDefault.create = (type, params) => {
+    return new ZodOptional({
+        innerType: type,
+        typeName: ZodFirstPartyTypeKind.ZodOptional,
+        ...processCreateParams(params),
+    });
+};
+class ZodNaN extends ZodType {
+    _parse(input) {
+        const parsedType = this._getType(input);
+        if (parsedType !== ZodParsedType.nan) {
+            const ctx = this._getOrReturnCtx(input);
+            addIssueToContext(ctx, {
+                code: ZodIssueCode.invalid_type,
+                expected: ZodParsedType.nan,
+                received: ctx.parsedType,
+            });
+            return INVALID;
+        }
+        return { status: "valid", value: input.data };
+    }
+}
+ZodNaN.create = (params) => {
+    return new ZodNaN({
+        typeName: ZodFirstPartyTypeKind.ZodNaN,
+        ...processCreateParams(params),
+    });
+};
+const BRAND = Symbol("zod_brand");
+class ZodBranded extends ZodType {
+    _parse(input) {
+        const { ctx } = this._processInputParams(input);
+        const data = ctx.data;
+        return this._def.type._parse({
+            data,
+            path: ctx.path,
+            parent: ctx,
+        });
+    }
+    unwrap() {
+        return this._def.type;
+    }
+}
+const custom = (check, params = {}, fatal) => {
+    if (check)
+        return ZodAny.create().superRefine((data, ctx) => {
+            if (!check(data)) {
+                const p = typeof params === "function" ? params(data) : params;
+                const p2 = typeof p === "string" ? { message: p } : p;
+                ctx.addIssue({ code: "custom", ...p2, fatal });
+            }
+        });
+    return ZodAny.create();
+};
+const late = {
+    object: ZodObject.lazycreate,
+};
+var ZodFirstPartyTypeKind;
+(function (ZodFirstPartyTypeKind) {
+    ZodFirstPartyTypeKind["ZodString"] = "ZodString";
+    ZodFirstPartyTypeKind["ZodNumber"] = "ZodNumber";
+    ZodFirstPartyTypeKind["ZodNaN"] = "ZodNaN";
+    ZodFirstPartyTypeKind["ZodBigInt"] = "ZodBigInt";
+    ZodFirstPartyTypeKind["ZodBoolean"] = "ZodBoolean";
+    ZodFirstPartyTypeKind["ZodDate"] = "ZodDate";
+    ZodFirstPartyTypeKind["ZodUndefined"] = "ZodUndefined";
+    ZodFirstPartyTypeKind["ZodNull"] = "ZodNull";
+    ZodFirstPartyTypeKind["ZodAny"] = "ZodAny";
+    ZodFirstPartyTypeKind["ZodUnknown"] = "ZodUnknown";
+    ZodFirstPartyTypeKind["ZodNever"] = "ZodNever";
+    ZodFirstPartyTypeKind["ZodVoid"] = "ZodVoid";
+    ZodFirstPartyTypeKind["ZodArray"] = "ZodArray";
+    ZodFirstPartyTypeKind["ZodObject"] = "ZodObject";
+    ZodFirstPartyTypeKind["ZodUnion"] = "ZodUnion";
+    ZodFirstPartyTypeKind["ZodDiscriminatedUnion"] = "ZodDiscriminatedUnion";
+    ZodFirstPartyTypeKind["ZodIntersection"] = "ZodIntersection";
+    ZodFirstPartyTypeKind["ZodTuple"] = "ZodTuple";
+    ZodFirstPartyTypeKind["ZodRecord"] = "ZodRecord";
+    ZodFirstPartyTypeKind["ZodMap"] = "ZodMap";
+    ZodFirstPartyTypeKind["ZodSet"] = "ZodSet";
+    ZodFirstPartyTypeKind["ZodFunction"] = "ZodFunction";
+    ZodFirstPartyTypeKind["ZodLazy"] = "ZodLazy";
+    ZodFirstPartyTypeKind["ZodLiteral"] = "ZodLiteral";
+    ZodFirstPartyTypeKind["ZodEnum"] = "ZodEnum";
+    ZodFirstPartyTypeKind["ZodEffects"] = "ZodEffects";
+    ZodFirstPartyTypeKind["ZodNativeEnum"] = "ZodNativeEnum";
+    ZodFirstPartyTypeKind["ZodOptional"] = "ZodOptional";
+    ZodFirstPartyTypeKind["ZodNullable"] = "ZodNullable";
+    ZodFirstPartyTypeKind["ZodDefault"] = "ZodDefault";
+    ZodFirstPartyTypeKind["ZodPromise"] = "ZodPromise";
+    ZodFirstPartyTypeKind["ZodBranded"] = "ZodBranded";
+})(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
+// new approach that works for abstract classes
+// but required TS 4.4+
+// abstract class Class {
+//   constructor(..._: any[]) {}
+// }
+// const instanceOfType = <T extends typeof Class>(
+const instanceOfType = (cls, params = {
+    message: `Input not instance of ${cls.name}`,
+}) => custom((data) => data instanceof cls, params, true);
+const stringType = ZodString.create;
+const numberType = ZodNumber.create;
+const nanType = ZodNaN.create;
+const bigIntType = ZodBigInt.create;
+const booleanType = ZodBoolean.create;
+const dateType = ZodDate.create;
+const undefinedType = ZodUndefined.create;
+const nullType = ZodNull.create;
+const anyType = ZodAny.create;
+const unknownType = ZodUnknown.create;
+const neverType = ZodNever.create;
+const voidType = ZodVoid.create;
+const arrayType = ZodArray.create;
+const objectType = ZodObject.create;
+const strictObjectType = ZodObject.strictCreate;
+const unionType = ZodUnion.create;
+const discriminatedUnionType = ZodDiscriminatedUnion.create;
+const intersectionType = ZodIntersection.create;
+const tupleType = ZodTuple.create;
+const recordType = ZodRecord.create;
+const mapType = ZodMap.create;
+const setType = ZodSet.create;
+const functionType = ZodFunction.create;
+const lazyType = ZodLazy.create;
+const literalType = ZodLiteral.create;
+const enumType = ZodEnum.create;
+const nativeEnumType = ZodNativeEnum.create;
+const promiseType = ZodPromise.create;
+const effectsType = ZodEffects.create;
+const optionalType = ZodOptional.create;
+const nullableType = ZodNullable.create;
+const preprocessType = ZodEffects.createWithPreprocess;
+const ostring = () => stringType().optional();
+const onumber = () => numberType().optional();
+const oboolean = () => booleanType().optional();
+const NEVER = INVALID;
+
+var mod = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getParsedType: getParsedType,
+    ZodParsedType: ZodParsedType,
+    defaultErrorMap: errorMap,
+    setErrorMap: setErrorMap,
+    getErrorMap: getErrorMap,
+    makeIssue: makeIssue,
+    EMPTY_PATH: EMPTY_PATH,
+    addIssueToContext: addIssueToContext,
+    ParseStatus: ParseStatus,
+    INVALID: INVALID,
+    DIRTY: DIRTY,
+    OK: OK,
+    isAborted: isAborted,
+    isDirty: isDirty,
+    isValid: isValid,
+    isAsync: isAsync,
+    ZodType: ZodType,
+    ZodString: ZodString,
+    ZodNumber: ZodNumber,
+    ZodBigInt: ZodBigInt,
+    ZodBoolean: ZodBoolean,
+    ZodDate: ZodDate,
+    ZodUndefined: ZodUndefined,
+    ZodNull: ZodNull,
+    ZodAny: ZodAny,
+    ZodUnknown: ZodUnknown,
+    ZodNever: ZodNever,
+    ZodVoid: ZodVoid,
+    ZodArray: ZodArray,
+    get objectUtil () { return objectUtil; },
+    ZodObject: ZodObject,
+    ZodUnion: ZodUnion,
+    ZodDiscriminatedUnion: ZodDiscriminatedUnion,
+    ZodIntersection: ZodIntersection,
+    ZodTuple: ZodTuple,
+    ZodRecord: ZodRecord,
+    ZodMap: ZodMap,
+    ZodSet: ZodSet,
+    ZodFunction: ZodFunction,
+    ZodLazy: ZodLazy,
+    ZodLiteral: ZodLiteral,
+    ZodEnum: ZodEnum,
+    ZodNativeEnum: ZodNativeEnum,
+    ZodPromise: ZodPromise,
+    ZodEffects: ZodEffects,
+    ZodTransformer: ZodEffects,
+    ZodOptional: ZodOptional,
+    ZodNullable: ZodNullable,
+    ZodDefault: ZodDefault,
+    ZodNaN: ZodNaN,
+    BRAND: BRAND,
+    ZodBranded: ZodBranded,
+    custom: custom,
+    Schema: ZodType,
+    ZodSchema: ZodType,
+    late: late,
+    get ZodFirstPartyTypeKind () { return ZodFirstPartyTypeKind; },
+    any: anyType,
+    array: arrayType,
+    bigint: bigIntType,
+    boolean: booleanType,
+    date: dateType,
+    discriminatedUnion: discriminatedUnionType,
+    effect: effectsType,
+    'enum': enumType,
+    'function': functionType,
+    'instanceof': instanceOfType,
+    intersection: intersectionType,
+    lazy: lazyType,
+    literal: literalType,
+    map: mapType,
+    nan: nanType,
+    nativeEnum: nativeEnumType,
+    never: neverType,
+    'null': nullType,
+    nullable: nullableType,
+    number: numberType,
+    object: objectType,
+    oboolean: oboolean,
+    onumber: onumber,
+    optional: optionalType,
+    ostring: ostring,
+    preprocess: preprocessType,
+    promise: promiseType,
+    record: recordType,
+    set: setType,
+    strictObject: strictObjectType,
+    string: stringType,
+    transformer: effectsType,
+    tuple: tupleType,
+    'undefined': undefinedType,
+    union: unionType,
+    unknown: unknownType,
+    'void': voidType,
+    NEVER: NEVER,
+    ZodIssueCode: ZodIssueCode,
+    quotelessJson: quotelessJson,
+    ZodError: ZodError
+});
+
+
+
+// EXTERNAL MODULE: ./node_modules/lodash/keyBy.js
+var keyBy = __nccwpck_require__(827);
+// EXTERNAL MODULE: ./node_modules/tiny-invariant/dist/tiny-invariant.cjs.js
+var tiny_invariant_cjs = __nccwpck_require__(4594);
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/constants.js
+const NOT_CONFIGURED_ERR_MSG = (name) => `Cannot validate resources. The ${name} validator must first be configured.`;
+const NOT_FOUND_ERR_MSG = (name) => `Cannot find validator: ${name}.`;
+const constants_REF_PATH_SEPARATOR = "#";
+const constants_NAME_REFNODE_PATH = `metadata${constants_REF_PATH_SEPARATOR}name`;
+const NO_HELP_AVAILABLE = "No help available.";
+const FALLBACK_REGION = {
+    startLine: 1,
+    startColumn: 1,
+    endLine: 1,
+    endColumn: 1,
+};
+const KUSTOMIZATION_KIND = "Kustomization";
+const KUSTOMIZATION_API_GROUP = "kustomize.config.k8s.io";
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/sarif.js
+
+function sarif_getResourceId(result) {
+    return getResourceLocation(result).physicalLocation?.artifactLocation.uri;
+}
+function getFileId(result) {
+    return getFileLocation(result).physicalLocation?.artifactLocation.uri;
+}
+function getResourceLocation(result) {
+    const location = result.locations?.[1];
+    tiny_invariant_cjs(location, "invalid SARIF result");
+    return location;
+}
+function getFileLocation(result) {
+    const location = result.locations?.[0];
+    tiny_invariant_cjs(location, "invalid SARIF result");
+    return location;
+}
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/common/AbstractValidator.js
+
+
+
+
+class AbstractValidator {
+    name;
+    configured = false;
+    _enabled = true;
+    _rules;
+    _ruleReverseLookup = new Map(); // Lookup index by rule identifier;
+    _policyRuleReverseLookup = new Map(); // Lookup index by rule identifier;
+    _ruleNameToIdLookup = new Map();
+    _ruleConfig = new Map();
+    _previous = [];
+    constructor(name, rules) {
+        this.name = name;
+        this._rules = rules;
+        rules.forEach((r, idx) => this._ruleReverseLookup.set(r.id, idx));
+        rules.forEach((r) => this._ruleNameToIdLookup.set(`${this.name}/${r.name}`, r.id));
+    }
+    get enabled() {
+        return this._enabled;
+    }
+    set enabled(value) {
+        this._enabled = value;
+    }
+    get rules() {
+        return this._rules;
+    }
+    isRuleEnabled(rule) {
+        const ruleSplit = rule.split("/");
+        if (ruleSplit.length === 1) {
+            // rule-id
+            const ruleConfig = this._ruleConfig.get(rule);
+            if (!ruleConfig)
+                return false;
+            return ruleConfig.enabled ?? true;
+        }
+        else {
+            // validator-name/rule-name
+            const ruleId = this._ruleNameToIdLookup.get(rule);
+            if (!ruleId) {
+                return false;
+            }
+            return this.getRuleConfig(ruleId).enabled ?? true;
+        }
+    }
+    createValidationResult(ruleId, args) {
+        const index = this._ruleReverseLookup.get(ruleId);
+        tiny_invariant_cjs(index !== undefined, "rules misconfigured");
+        if (!this.isRuleEnabled(ruleId)) {
+            return undefined;
+        }
+        const ruleConfig = this.getRuleConfig(ruleId);
+        return {
+            ruleId,
+            rule: {
+                index,
+                toolComponent: {
+                    name: this.name,
+                },
+            },
+            level: ruleConfig.level,
+            ...args,
+        };
+    }
+    async configure(config) {
+        this.configureRules(config.rules);
+        await this.configureValidator(config.settings);
+        this.configured = true;
+    }
+    configureRules(rules = {}) {
+        this._ruleConfig.clear();
+        // Set defaults
+        for (const rule of this._rules) {
+            this._ruleConfig.set(rule.id, rule.defaultConfiguration ?? {});
+        }
+        // Set overrides
+        for (const [ruleName, newConfig] of Object.entries(rules)) {
+            // ruleName is either "validator-name/rule-name" or 'rule-id".
+            const ruleId = this._ruleNameToIdLookup.get(ruleName) ?? ruleName;
+            const ruleIndex = this._ruleReverseLookup.get(ruleId);
+            if (ruleIndex === undefined) {
+                continue; // rule not found.
+            }
+            const defaultConfig = this._rules[ruleIndex].defaultConfiguration;
+            this._ruleConfig.set(ruleId, typeof newConfig === "boolean"
+                ? {
+                    ...defaultConfig,
+                    enabled: newConfig,
+                }
+                : {
+                    ...defaultConfig,
+                    enabled: true,
+                    level: newConfig === "err" ? "error" : "warning",
+                });
+        }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    configureValidator(settings) {
+        return Promise.resolve();
+    }
+    async clear() {
+        this._previous = [];
+    }
+    async validate(resources, incremental) {
+        tiny_invariant_cjs(this.configured, NOT_CONFIGURED_ERR_MSG(this.name));
+        let results = await this.doValidate(resources, incremental);
+        if (incremental) {
+            results = this.merge(this._previous, results, incremental);
+        }
+        this._previous = results;
+        return {
+            tool: {
+                driver: {
+                    name: this.name,
+                    rules: this.rules,
+                },
+            },
+            results,
+        };
+    }
+    getRuleConfig(ruleId) {
+        const ruleConfig = this._ruleConfig.get(ruleId);
+        tiny_invariant_cjs(ruleConfig, `rule_config_not_found`);
+        return ruleConfig;
+    }
+    merge(previous, current, incremental) {
+        const results = [];
+        const hashmap = keyBy(incremental?.resourceIds);
+        for (const result of previous) {
+            const resourceId = sarif_getResourceId(result);
+            const isDirty = Boolean(resourceId && hashmap[resourceId]);
+            if (!isDirty) {
+                results.push(result);
+            }
+        }
+        for (const result of current) {
+            const resourceId = sarif_getResourceId(result);
+            const isDirty = resourceId && hashmap[resourceId];
+            if (isDirty) {
+                results.push(result);
+            }
+        }
+        return results;
+    }
+}
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/createLocations.js
+
+function createLocations(resource, region = FALLBACK_REGION) {
+    // SARIF expects relative paths without leading path separator '/'.
+    const filePath = resource.filePath.startsWith("/")
+        ? resource.filePath.substring(1)
+        : resource.filePath;
+    return [
+        {
+            physicalLocation: {
+                artifactLocation: {
+                    uriBaseId: "SRCROOT",
+                    uri: filePath,
+                },
+                region: {
+                    ...region,
+                    startLine: region.startLine + (resource.fileOffset ?? 0),
+                    endLine: region.endLine + (resource.fileOffset ?? 0),
+                },
+            },
+        },
+        {
+            physicalLocation: {
+                artifactLocation: {
+                    uriBaseId: "RESOURCE",
+                    uri: resource.id,
+                },
+                region,
+            },
+        },
+    ];
+}
+
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/kubernetes-schema/customResourceDefinitions.js
 function extractSchema(crd, versionName) {
     const versions = crd?.spec?.versions || [];
@@ -31254,7 +43498,7 @@ const RESOURCE_SCHEMA_PREFIX = {
 const KUBERNETES_SCHEMA_RULES = [
     {
         id: "K8S001",
-        name: "SCHEMA_VIOLATED",
+        name: "schema-violated",
         shortDescription: {
             text: "The resource is formated incorrectly.",
         },
@@ -31276,17 +43520,25 @@ const KUBERNETES_SCHEMA_RULES = [
 
 
 
+
+
+const Settings = mod.object({
+    schemaVersion: mod.string().default("1.24.2"),
+});
 class KubernetesSchemaValidator extends AbstractValidator {
     resourceParser;
     schemaLoader;
+    static toolName = "kubernetes-schema";
+    _settings;
     ajv;
     constructor(resourceParser, schemaLoader) {
-        super("kubernetes-schema", KUBERNETES_SCHEMA_RULES);
+        super(KubernetesSchemaValidator.toolName, KUBERNETES_SCHEMA_RULES);
         this.resourceParser = resourceParser;
         this.schemaLoader = schemaLoader;
     }
-    async doLoad(config) {
-        const version = config.schemaVersion;
+    async configureValidator(rawSettings = {}) {
+        this._settings = Settings.parse(rawSettings["kubernetes-schema"] ?? {});
+        const version = this._settings.schemaVersion;
         const schema = await this.schemaLoader.getFullSchema(version);
         if (!schema) {
             return;
@@ -31339,10 +43591,11 @@ class KubernetesSchemaValidator extends AbstractValidator {
         }
     }
     addCustomSchema(kind, schema) {
-        if (!this.config?.schemaVersion) {
+        const version = this._settings.schemaVersion;
+        if (!version) {
             return;
         }
-        const key = `${this.config.schemaVersion}-${kind}`;
+        const key = `${version}-${kind}`;
         if (this.schemaLoader.hasSchema(key)) {
             return;
         }
@@ -31356,9 +43609,9 @@ class KubernetesSchemaValidator extends AbstractValidator {
         }
         validate(resource.content);
         const errors = validate.errors ?? [];
-        const results = errors.map((err) => {
-            return this.adaptToValidationResult(resource, err);
-        });
+        const results = errors
+            .map((err) => this.adaptToValidationResult(resource, err))
+            .filter(isDefined);
         return results;
     }
     /**
@@ -31369,8 +43622,9 @@ class KubernetesSchemaValidator extends AbstractValidator {
     async getResourceValidator(kind) {
         const prefix = getResourceSchemaPrefix(kind);
         // could be custom resource
-        if (!prefix && this.config?.schemaVersion) {
-            const key = `${this.config.schemaVersion}-${kind}`;
+        const version = this._settings.schemaVersion;
+        if (!prefix && version) {
+            const key = `${version}-${kind}`;
             const validate = this.ajv.getSchema(`#/definitions/${key}`);
             return validate;
         }
@@ -31401,7 +43655,7 @@ function findJsonPointerNode(valuesDoc, path) {
     let valueNode = valuesDoc.contents;
     for (let c = 0; valueNode && c < path.length; c += 1) {
         let node = path[c];
-        if ((0,dist/* isCollection */.uZ)(valueNode)) {
+        if ((0,dist.isCollection)(valueNode)) {
             const nextNode = valueNode.get(node, true);
             if (nextNode) {
                 valueNode = nextNode;
@@ -31416,6 +43670,772 @@ function findJsonPointerNode(valuesDoc, path) {
     return valueNode;
 }
 
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/labels/rules.js
+const LABELS_RULES = [
+    {
+        id: "LBL001",
+        name: "no-empty-labels",
+        shortDescription: {
+            text: "Cannot find any label.",
+        },
+        fullDescription: {
+            text: "The resource should use labels to easily identify it. Without labels it is difficult to determine source of deployment and ownership.",
+        },
+        help: {
+            text: "Add any label to the Kubernetes resource.",
+        },
+    },
+];
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/labels/validator.js
+
+
+
+
+/**
+ * Trivial validator used for development and testing.
+ */
+class LabelsValidator extends AbstractValidator {
+    parser;
+    static toolName = "labels";
+    constructor(parser) {
+        super(LabelsValidator.toolName, LABELS_RULES);
+        this.parser = parser;
+    }
+    async doValidate(resources, incremental) {
+        const invalidResources = [];
+        const dirtyResources = incremental
+            ? resources.filter((r) => incremental.resourceIds.includes(r.id))
+            : resources;
+        for (const resource of dirtyResources) {
+            const labels = Object.entries(resource.content.metadata?.labels ?? {});
+            const hasLabels = labels.length > 0;
+            if (!hasLabels) {
+                invalidResources.push(resource);
+            }
+        }
+        const results = invalidResources
+            .map((r) => this.adaptToValidationResult(r))
+            .filter(isDefined);
+        return results;
+    }
+    adaptToValidationResult(resource) {
+        const { parsedDoc } = this.parser.parse(resource);
+        const node = parsedDoc.getIn(["metadata"], true);
+        const region = node?.range
+            ? this.parser.parseErrorRegion(resource, node.range)
+            : undefined;
+        const locations = createLocations(resource, region);
+        return this.createValidationResult("LBL001", {
+            message: {
+                text: "Resource is unlabelled.",
+            },
+            locations,
+        });
+    }
+}
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/open-policy-agent/wasmLoader/RemoteWasmLoader.js
+class RemoteWasmLoader {
+    async load(url) {
+        const response = await fetch(url);
+        const data = await response.arrayBuffer();
+        return data;
+    }
+}
+
+// EXTERNAL MODULE: ./node_modules/@open-policy-agent/opa-wasm/src/opa.js
+var src_opa = __nccwpck_require__(1535);
+;// CONCATENATED MODULE: ./node_modules/@open-policy-agent/opa-wasm/src/index.mjs
+
+/**
+ * @type {opa.loadPolicy}
+ */
+const loadPolicy = src_opa.loadPolicy;
+/* harmony default export */ const src = ((/* unused pure expression or super */ null && (opa)));
+
+// EXTERNAL MODULE: ./node_modules/lodash/get.js
+var get = __nccwpck_require__(6908);
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/open-policy-agent/rules.js
+const DEFAULT_TRIVY_PLUGIN = {
+    name: "Default Trivy policies",
+    id: "io.kubeshop.monokle.templates.default.policy",
+    author: "kubeshop.io",
+    version: "0.1.0",
+    description: "Default policies for Kubernetes resources.",
+    type: "basic",
+    module: "./policy.wasm",
+    rules: [
+        {
+            id: "KSV001",
+            name: "no-elevated-process",
+            shortDescription: {
+                text: "Disallow the process from elevating its privileges.",
+            },
+            fullDescription: {
+                text: "A program inside the container can elevate its own privileges and run as root, which might give the program control over the container and node.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted",
+            help: {
+                text: "Set 'set containers[].securityContext.allowPrivilegeEscalation' to 'false'.",
+            },
+            properties: {
+                problem: {
+                    severity: "warning",
+                },
+                severity: "medium",
+                entrypoint: "appshield/kubernetes/KSV001/deny",
+                path: "$container.securityContext.allowPrivilegeEscalation",
+            },
+        },
+        {
+            id: "KSV002",
+            name: "app-armor",
+            shortDescription: {
+                text: "Require a default AppArmor profile",
+            },
+            fullDescription: {
+                text: "A program inside the container can bypass AppArmor protection policies.",
+            },
+            helpUri: "https://kubesec.io/basics/containers-securitycontext-capabilities-drop-index-all/",
+            help: {
+                text: "Remove 'container.apparmor.security.beta.kubernetes.io' annotation or set it to 'runtime/default'.",
+            },
+            properties: {
+                problem: {
+                    severity: "warning",
+                },
+                severity: "medium",
+                entrypoint: "appshield/kubernetes/KSV002/deny",
+                path: "$container.AppArmor",
+            },
+        },
+        {
+            id: "KSV003",
+            name: "drop-capabilities",
+            shortDescription: {
+                text: "Require default capabilities to be dropped",
+            },
+            fullDescription: {
+                text: "The container should drop all default capabilities and add only those that are needed for its execution.",
+            },
+            helpUri: "https://kubesec.io/basics/containers-securitycontext-capabilities-drop-index-all/",
+            help: {
+                text: "Add 'ALL' to containers[].securityContext.capabilities.drop.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV003/deny",
+                path: "$container.securityContext.capabilities.drop",
+            },
+        },
+        {
+            id: "KSV005",
+            name: "no-sys-admin",
+            shortDescription: {
+                text: "Disallow the SYS_ADMIN capability",
+            },
+            fullDescription: {
+                text: "SYS_ADMIN gives the processes running inside the container privileges that are equivalent to root.",
+            },
+            helpUri: "https://kubesec.io/basics/containers-securitycontext-capabilities-add-index-sys-admin/",
+            help: {
+                text: "Remove the SYS_ADMIN capability from 'containers[].securityContext.capabilities.add'.",
+            },
+            properties: {
+                severity: "high",
+                entrypoint: "appshield/kubernetes/KSV005/deny",
+                path: "$container.securityContext.capabilities.add",
+            },
+        },
+        {
+            id: "KSV006",
+            name: "no-mounted-docker-sock",
+            shortDescription: {
+                text: "Disallow mounteing the hostPath volume with docker.sock",
+            },
+            fullDescription: {
+                text: "Mounting docker.sock from the host can give the container full root access to the host.",
+            },
+            helpUri: "https://kubesec.io/basics/spec-volumes-hostpath-path-var-run-docker-sock/",
+            help: {
+                text: "Do not specify `/var/run/docker.sock` in spec.template.volumes.hostPath.path.",
+            },
+            properties: {
+                severity: "high",
+                entrypoint: "appshield/kubernetes/KSV006/deny",
+                path: "spec.template.spec.volumes.hostPath.path",
+            },
+        },
+        {
+            id: "KSV008",
+            name: "no-host-ipc",
+            shortDescription: {
+                text: "Disallow access to host IPC namespace",
+            },
+            fullDescription: {
+                text: "Sharing the host's IPC namespace allows container processes to communicate with processes on the host.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#baseline",
+            help: {
+                text: "Do not set 'spec.template.spec.hostIPC' to true.",
+            },
+            properties: {
+                severity: "high",
+                entrypoint: "appshield/kubernetes/KSV008/deny",
+                path: "spec.template.spec.hostIPC",
+            },
+        },
+        {
+            id: "KSV009",
+            name: "no-host-network",
+            shortDescription: {
+                text: "Disallow access to host network",
+            },
+            fullDescription: {
+                text: "Sharing the host’s network namespace permits processes in the pod to communicate with processes bound to the host’s loopback adapter.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#baseline",
+            help: {
+                text: "Do not set 'spec.template.spec.hostNetwork' to true.",
+            },
+            properties: {
+                severity: "high",
+                entrypoint: "appshield/kubernetes/KSV009/deny",
+                path: "spec.template.spec.hostNetwork",
+            },
+        },
+        {
+            id: "KSV010",
+            name: "no-host-pid",
+            shortDescription: {
+                text: "Disallow access to host PID",
+            },
+            fullDescription: {
+                text: "Sharing the host’s PID namespace allows visibility on host processes, potentially leaking information such as environment variables and configuration.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#baseline",
+            help: {
+                text: "Do not set 'spec.template.spec.hostPID' to true.",
+            },
+            properties: {
+                severity: "high",
+                entrypoint: "appshield/kubernetes/KSV010/deny",
+                path: "spec.template.spec.hostPID",
+            },
+        },
+        {
+            id: "KSV011",
+            name: "cpu-limit",
+            shortDescription: {
+                text: "Require the CPU to be limited",
+            },
+            fullDescription: {
+                text: "Enforcing CPU limits prevents DoS via resource exhaustion.",
+            },
+            helpUri: "https://cloud.google.com/blog/products/containers-kubernetes/kubernetes-best-practices-resource-requests-and-limits",
+            help: {
+                text: "Add a cpu limitation to 'spec.resources.limits.cpu'.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV011/deny",
+                path: "$container.resources.limits.cpu",
+            },
+        },
+        {
+            id: "KSV012",
+            name: "run-as-non-root",
+            shortDescription: {
+                text: "Requires the container to runs as non root user",
+            },
+            fullDescription: {
+                text: '"runAsNonRoot" forces the running image to run as a non-root user to ensure least privileges.',
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted",
+            help: {
+                text: "Set 'containers[].securityContext.runAsNonRoot' to true.",
+            },
+            properties: {
+                severity: "medium",
+                entrypoint: "appshield/kubernetes/KSV012/deny",
+                path: "$container.securityContext.runAsNonRoot",
+            },
+        },
+        {
+            id: "KSV013",
+            name: "no-latest-image",
+            shortDescription: {
+                text: "Disallow images with the latest tag",
+            },
+            fullDescription: {
+                text: "It is best to avoid using the ':latest' image tag when deploying containers in production. Doing so makes it hard to track which version of the image is running, and hard to roll back the version.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/configuration/overview/#container-images",
+            help: {
+                text: "Use a specific container image tag that is not 'latest'.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV013/deny",
+                path: "$container.image",
+            },
+        },
+        {
+            id: "KSV014",
+            name: "no-writable-fs",
+            shortDescription: {
+                text: "Require a read-only root file system",
+            },
+            fullDescription: {
+                text: "An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.",
+            },
+            helpUri: "https://kubesec.io/basics/containers-securitycontext-readonlyrootfilesystem-true/",
+            help: {
+                text: "Change 'containers[].securityContext.readOnlyRootFilesystem' to 'true'.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV014/deny",
+                path: "$container.securityContext.readOnlyRootFilesystem",
+            },
+        },
+        {
+            id: "KSV015",
+            name: "cpu-request",
+            shortDescription: {
+                text: "Require the CPU to be requested",
+            },
+            fullDescription: {
+                text: "When containers have resource requests specified, the scheduler can make better decisions about which nodes to place pods on, and how to deal with resource contention.",
+            },
+            helpUri: "https://kubesec.io/basics/containers-securitycontext-capabilities-drop-index-all/",
+            help: {
+                text: "Set 'containers[].resources.requests.cpu'.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV015/deny",
+                path: "$container.resources.requests.cpu",
+            },
+        },
+        {
+            id: "KSV016",
+            name: "memory-request",
+            shortDescription: {
+                text: "Require the memory to be requested",
+            },
+            fullDescription: {
+                text: "When containers have memory requests specified, the scheduler can make better decisions about which nodes to place pods on, and how to deal with resource contention.",
+            },
+            helpUri: "https://kubesec.io/basics/containers-resources-limits-memory/",
+            help: {
+                text: "Set 'containers[].resources.requests.memory'.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV016/deny",
+                path: "$container.resources.requests.memory",
+            },
+        },
+        {
+            id: "KSV017",
+            name: "no-privileged",
+            shortDescription: {
+                text: "Disallow the use of privileged containers",
+            },
+            fullDescription: {
+                text: "Privileged containers share namespaces with the host system and do not offer any security. They should be used exclusively for system containers that require high privileges.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#baseline",
+            help: {
+                text: "Change 'containers[].securityContext.privileged' to false",
+            },
+            properties: {
+                severity: "high",
+                entrypoint: "appshield/kubernetes/KSV017/deny",
+                path: "$container.securityContext.privileged",
+            },
+        },
+        {
+            id: "KSV018",
+            name: "memory-limit",
+            shortDescription: {
+                text: "Require the memory to be limited",
+            },
+            fullDescription: {
+                text: "Enforcing memory limits prevents DoS via resource exhaustion.",
+            },
+            helpUri: "https://kubesec.io/basics/containers-resources-limits-memory/",
+            help: {
+                text: "Set a limit value under 'containers[].resources.limits.memory'.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV018/deny",
+                path: "$container.resources.limits.memory",
+            },
+        },
+        {
+            id: "KSV020",
+            name: "no-low-user-id",
+            shortDescription: {
+                text: "Disallow running with a low user ID",
+            },
+            fullDescription: {
+                text: "Force the container to run with user ID > 10000 to avoid conflicts with the host’s user table.",
+            },
+            helpUri: "https://kubesec.io/basics/containers-securitycontext-runasuser/",
+            help: {
+                text: "Set 'containers[].securityContext.runAsUser' to an integer > 10000.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV020/deny",
+                path: "$container.securityContext.runAsUser",
+            },
+        },
+        {
+            id: "KSV021",
+            name: "no-low-group-id",
+            shortDescription: {
+                text: "Disallow running with a low group ID",
+            },
+            fullDescription: {
+                text: "Force the container to run with group ID > 10000 to avoid conflicts with the host’s user table.",
+            },
+            helpUri: "https://kubesec.io/basics/containers-securitycontext-runasuser/",
+            help: {
+                text: "Set 'containers[].securityContext.runAsGroup' to an integer > 10000.",
+            },
+            properties: {
+                severity: "medium",
+                entrypoint: "appshield/kubernetes/KSV021/deny",
+                path: "$container.securityContext.runAsGroup",
+            },
+        },
+        {
+            id: "KSV023",
+            name: "no-host-mounted-path",
+            shortDescription: {
+                text: "Disallow mounting hostPath volumes",
+            },
+            fullDescription: {
+                text: "HostPath volumes must be forbidden.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#baseline",
+            help: {
+                text: "Do not set 'spec.volumes[*].hostPath'.",
+            },
+            properties: {
+                severity: "medium",
+                entrypoint: "appshield/kubernetes/KSV023/deny",
+                path: "spec.template.spec.volumes.hostPath",
+            },
+        },
+        {
+            id: "KSV024",
+            name: "no-host-port-access",
+            shortDescription: {
+                text: "Disallow accessing the host ports",
+            },
+            fullDescription: {
+                text: "HostPorts should be disallowed, or at minimum restricted to a known list.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#baseline",
+            help: {
+                text: "Do not set spec.containers[*].ports[*].hostPort and spec.initContainers[*].ports[*].hostPort.",
+            },
+            properties: {
+                severity: "high",
+                entrypoint: "appshield/kubernetes/KSV024/deny",
+                path: "$container.ports",
+            },
+        },
+        {
+            id: "KSV025",
+            name: "no-selinux",
+            shortDescription: {
+                text: "Disallow custom SELinux options",
+            },
+            fullDescription: {
+                text: "There should be no custom SELinux options for this container.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#baseline",
+            help: {
+                text: "Do not set spec.securityContext.seLinuxOptions, spec.containers[*].securityContext.seLinuxOptions and spec.initContainers[*].securityContext.seLinuxOptions.",
+            },
+            properties: {
+                severity: "medium",
+                entrypoint: "appshield/kubernetes/KSV025/deny",
+                path: "$container.securityContext.seLinuxOptions",
+            },
+        },
+        {
+            id: "KSV027",
+            name: "no-proc-mount",
+            shortDescription: {
+                text: "Disallow setting proc masks",
+            },
+            fullDescription: {
+                text: "The default /proc masks are set up to reduce attack surface, and should be required.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#baseline",
+            help: {
+                text: "Do not set spec.containers[*].securityContext.procMount and spec.initContainers[*].securityContext.procMount.",
+            },
+            properties: {
+                severity: "medium",
+                entrypoint: "appshield/kubernetes/KSV027/deny",
+                path: "$container.securityContext.procMount",
+            },
+        },
+        {
+            id: "KSV028",
+            name: "no-non-emphemeral-volumes",
+            shortDescription: {
+                text: "Disallow use of non-ephemeral volume types",
+            },
+            fullDescription: {
+                text: "In addition to restricting HostPath volumes, usage of non-ephemeral volume types should be limited to those defined through PersistentVolumes.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted",
+            help: {
+                text: "Do not Set 'spec.volumes[*]' to any of the disallowed volume types.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV028/deny",
+                path: "spec.template.spec.volumes",
+            },
+        },
+        {
+            id: "KSV029",
+            name: "no-root-group",
+            shortDescription: {
+                text: "Disallow setting runAsGroup to zero.",
+            },
+            fullDescription: {
+                text: "Containers should be forbidden from running with a root primary or supplementary GID.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted",
+            help: {
+                text: "containers[].securityContext.runAsGroup' to a non-zero integer or leave undefined.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV029/deny",
+                path: "$container.securityContext.runAsGroup",
+            },
+        },
+        {
+            id: "KSV030",
+            name: "seccomp-profile",
+            shortDescription: {
+                text: "Require a Seccomp profile",
+            },
+            fullDescription: {
+                text: "The RuntimeDefault seccomp profile must be required, or allow specific additional profiles.",
+            },
+            helpUri: "https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted",
+            help: {
+                text: "Set 'spec.securityContext.seccompProfile.type', 'spec.containers[*].securityContext.seccompProfile' and 'spec.initContainers[*].securityContext.seccompProfile' to 'RuntimeDefault' or undefined.",
+            },
+            properties: {
+                severity: "low",
+                entrypoint: "appshield/kubernetes/KSV030/deny",
+                path: "$container.securityContext.seccompProfile.type",
+            },
+        },
+    ],
+};
+const OPEN_POLICY_AGENT_RULES = DEFAULT_TRIVY_PLUGIN.rules;
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/open-policy-agent/validator.js
+
+
+
+
+
+
+
+
+
+const validator_Settings = mod.object({
+    wasmSrc: mod.string()
+        .default("https://saas.monokle.io/assets/trivy.18d95eb9.wasm"),
+});
+const CONTROLLER_KINDS = [
+    "Deployment",
+    "StatefulSet",
+    "Job",
+    "DaemonSet",
+    "ReplicaSet",
+    "ReplicationController",
+];
+class OpenPolicyAgentValidator extends AbstractValidator {
+    resourceParser;
+    wasmLoader;
+    static toolName = "open-policy-agent";
+    _settings;
+    validator;
+    constructor(resourceParser, wasmLoader) {
+        super(OpenPolicyAgentValidator.toolName, OPEN_POLICY_AGENT_RULES);
+        this.resourceParser = resourceParser;
+        this.wasmLoader = wasmLoader;
+    }
+    async configureValidator(settings = {}) {
+        this._settings = validator_Settings.parse(settings["open-policy-agent"] ?? {});
+        const wasmSrc = this._settings.wasmSrc;
+        const wasm = await this.wasmLoader.load(wasmSrc);
+        this.validator = await loadPolicy(wasm);
+    }
+    async doValidate(resources, incremental) {
+        const results = [];
+        const dirtyResources = incremental
+            ? resources.filter((r) => incremental.resourceIds.includes(r.id))
+            : resources;
+        for (const resource of dirtyResources) {
+            const resourceErrors = await this.validateResource(resource);
+            results.push(...resourceErrors);
+        }
+        return results;
+    }
+    async validateResource(resource) {
+        if (isManagedByKustomize(resource)) {
+            return [];
+        }
+        const enabledRules = this.rules.filter((r) => this.isRuleEnabled(r.id));
+        const errors = enabledRules.flatMap((rule) => {
+            return this.validatePolicyRule(resource, rule);
+        });
+        return errors;
+    }
+    validatePolicyRule(resource, rule) {
+        const entrypoint = rule.properties?.entrypoint;
+        tiny_invariant_cjs(entrypoint, "Validator's rule misconfigured");
+        const evaluation = this.validator.evaluate(resource.content, entrypoint);
+        const violations = evaluation[0]?.result ?? [];
+        const errors = violations
+            .map((err) => this.adaptToValidationResult(resource, rule, err))
+            .filter(isDefined);
+        return errors;
+    }
+    adaptToValidationResult(resource, rule, err) {
+        const regexMatch = err.msg?.match(/Container '([A-Za-z-]*)'/);
+        const container = regexMatch ? regexMatch[1] : undefined;
+        const description = container
+            ? `${rule.shortDescription.text} on container "${container}".`
+            : rule.shortDescription.text;
+        // const property = rule.properties.path?.replace(/\./g, '/') ?? resource.name;
+        const pathHint = rule.properties?.path;
+        const region = this.determineErrorRegion(resource, pathHint, container);
+        const locations = createLocations(resource, region);
+        return this.createValidationResult(rule.id, {
+            message: {
+                text: description,
+            },
+            locations,
+        });
+    }
+    determineErrorRegion(resource, pathHint, container) {
+        if (!pathHint) {
+            return this.createRefPositionFallback(resource);
+        }
+        const path = pathHint.split(".");
+        const isContainer = path[0] === "$container";
+        if (isContainer && !container) {
+            return this.createRefPositionFallback(resource);
+        }
+        if (isContainer)
+            path.shift(); // drop $container keyword
+        const prefix = isContainer && container
+            ? this.determineContainerPrefix(resource, container)
+            : [];
+        const node = this.determineClosestErrorNode(resource, path, prefix);
+        return this.createRefPosition(resource, node);
+    }
+    /**
+     * Ref position fallback is the resource kind to ensure VSC shows proper highlight.
+     */
+    createRefPositionFallback(resource) {
+        const node = this.determineClosestErrorNode(resource, ["kind"]);
+        return this.createRefPosition(resource, node);
+    }
+    createRefPosition(resource, node) {
+        if (!node || !node.range) {
+            return { startLine: 1, startColumn: 1, endColumn: 1, endLine: 1 };
+        }
+        return this.resourceParser.parseErrorRegion(resource, node.range);
+    }
+    determineContainerPrefix(resource, container) {
+        if (CONTROLLER_KINDS.includes(resource.kind)) {
+            const prefix = ["spec", "template", "spec"];
+            const containerIndex = this.determineContainerIndex(resource, container, prefix, ["initContainers", "containers"]);
+            return prefix.concat(containerIndex);
+        }
+        if (resource.kind === "CronJob") {
+            const prefix = [
+                "spec",
+                "jobTemplate",
+                "spec",
+                "template",
+                "spec",
+            ];
+            const containerIndex = this.determineContainerIndex(resource, container, prefix, ["containers"]);
+            return prefix.concat(containerIndex);
+        }
+        if (resource.kind === "Pod") {
+            const prefix = ["spec"];
+            const containerIndex = this.determineContainerIndex(resource, container, prefix, ["containers"]);
+            return prefix.concat(containerIndex);
+        }
+        return [];
+    }
+    determineContainerIndex(resource, container, prefix, properties) {
+        for (let i = 0; i < properties.length; i += 1) {
+            const property = properties[i];
+            const containers = get(resource.content, prefix.concat(property), []) ?? [];
+            const containerIndex = containers.findIndex((c) => c.name === container);
+            if (containerIndex !== -1) {
+                return [property, containerIndex];
+            }
+        }
+        return [];
+    }
+    /**
+     * Use a path hint to determine the node of the error or closest parent.
+     *
+     * Example:
+     * - Hint: $container.securityContext.readOnlyRootFilesystem and desired value is `true`.
+     * - When $container specifies `securityContext.readOnlyRootFilesystem` then it underlines the incorrect `false` value.
+     * - When $container specifies `securityContext` then it underlines whole context object.
+     * - When $container does not specify `securityContext` then it underlines whole container object.
+     */
+    determineClosestErrorNode(resource, path, prefix = []) {
+        const { parsedDoc } = this.resourceParser.parse(resource);
+        const currentPath = prefix.concat(path);
+        while (currentPath.length > prefix.length) {
+            const node = parsedDoc.getIn(currentPath, true);
+            if ((0,dist.isNode)(node)) {
+                return node;
+            }
+            currentPath.pop();
+        }
+        const node = parsedDoc.getIn(currentPath, true);
+        return (0,dist.isNode)(node) ? node : undefined;
+    }
+}
+function isManagedByKustomize(resource) {
+    if (resource.kind === "Kustomization") {
+        return true;
+    }
+    if (resource.name.startsWith("Patch: ")) {
+        return true;
+    }
+    return false;
+}
+
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/common/types.js
 var ResourceRefType;
 (function (ResourceRefType) {
@@ -31428,9 +44448,9 @@ var ResourceRefType;
 const RESOURCE_LINK_RULES = [
     {
         id: "LNK001",
-        name: "LINK_MISSING",
+        name: "no-missing-links",
         shortDescription: {
-            text: "Cannot find referenced resource.",
+            text: "Disallow missing links.",
         },
         fullDescription: {
             text: "The resource has a reference and it cannot be found. This will likely cause problems during deployments.",
@@ -31446,14 +44466,16 @@ const RESOURCE_LINK_RULES = [
 
 
 
+
 /**
  * Validates whether there are unsatisfied references between resources.
  *
  * @prerequisite you MUST run `processRefs` before calling the validator.
  */
 class ResourceLinksValidator extends AbstractValidator {
+    static toolName = "resource-links";
     constructor() {
-        super("resource-links", RESOURCE_LINK_RULES);
+        super(ResourceLinksValidator.toolName, RESOURCE_LINK_RULES);
     }
     merge(_previous, current) {
         // Disable incremental validation for now,
@@ -31471,9 +44493,9 @@ class ResourceLinksValidator extends AbstractValidator {
     async validateResource(resource) {
         const refs = resource.refs ?? [];
         const unsatisfiedRefs = refs.filter(isUnsatisfied);
-        const results = unsatisfiedRefs.map((ref) => {
-            return this.adaptToValidationResult(resource, ref);
-        });
+        const results = unsatisfiedRefs
+            .map((ref) => this.adaptToValidationResult(resource, ref))
+            .filter(isDefined);
         return results;
     }
     adaptToValidationResult(resource, ref) {
@@ -31498,14 +44520,361 @@ const isUnsatisfied = (r) => {
     return r.type === ResourceRefType.Unsatisfied;
 };
 
-// EXTERNAL MODULE: ./node_modules/lodash/isArray.js
-var isArray = __nccwpck_require__(4869);
-// EXTERNAL MODULE: ./node_modules/lodash/isNil.js
-var isNil = __nccwpck_require__(4977);
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/isDefined.js
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/yaml-syntax/rules.js
 
-function isDefined(value) {
-    return !isNil(value);
+/**
+ * Maps a YAML error code to its rule identifier.
+ *
+ * This is done because rule identifiers should be opaque.
+ * Let's use a consistent format so printing looks nice across validators.
+ *
+ * @see https://eemeli.org/yaml/#errors
+ */
+const YAML_RULE_MAP = {
+    ALIAS_PROPS: "YML001",
+    BAD_ALIAS: "YML002",
+    BAD_DIRECTIVE: "YML003",
+    BAD_DQ_ESCAPE: "YML004",
+    BAD_INDENT: "YML005",
+    BAD_PROP_ORDER: "YML006",
+    BAD_SCALAR_START: "YML007",
+    BLOCK_AS_IMPLICIT_KEY: "YML008",
+    BLOCK_IN_FLOW: "YML009",
+    DUPLICATE_KEY: "YML010",
+    IMPOSSIBLE: "YML011",
+    KEY_OVER_1024_CHARS: "YML012",
+    MISSING_ANCHOR: "YML013",
+    MISSING_CHAR: "YML014",
+    MULTILINE_IMPLICIT_KEY: "YML015",
+    MULTIPLE_ANCHORS: "YML016",
+    MULTIPLE_DOCS: "YML017",
+    MULTIPLE_TAGS: "YML018",
+    TAB_AS_INDENT: "YML019",
+    TAG_RESOLVE_FAILED: "YML020",
+    UNEXPECTED_TOKEN: "YML021",
+};
+const YAML_RULES = [
+    {
+        id: "YML001",
+        name: "alias-props",
+        shortDescription: {
+            text: "The alias props are incorrect.",
+        },
+        fullDescription: {
+            text: "Unlike scalars and collections, alias nodes cannot have an anchor or tag associated with it.",
+        },
+        help: {
+            text: "Do not associate anchors with alias nodes.",
+        },
+    },
+    {
+        id: "YML002",
+        name: "no-bad-alias",
+        shortDescription: {
+            text: "The alias' format is incorrect.",
+        },
+        fullDescription: {
+            text: "An alias identifier must be a non-empty sequence of valid characters.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML003",
+        name: "no-bad-directive",
+        shortDescription: {
+            text: "The directive is incorrect.",
+        },
+        fullDescription: {
+            text: "Only the %YAML and %TAG directives are supported, and they need to follow the specified structure.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML004",
+        name: "no-bad-dq-escape",
+        shortDescription: {
+            text: "The double quotes are escaped incorrectly.",
+        },
+        fullDescription: {
+            text: "Double-quotes strings may include '\\' escaped content, but that needs to be valid.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML005",
+        name: "no-bad-indent",
+        shortDescription: {
+            text: "The indentation is incorrect.",
+        },
+        fullDescription: {
+            text: "Indentation is important in YAML, and collection items need to all start at the same level. Block scalars are also picky about their leading content.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML006",
+        name: "no-bad-prop-order",
+        shortDescription: {
+            text: "The anchors and tags are used incorrectly.",
+        },
+        fullDescription: {
+            text: "Anchors and tags must be placed after the ?, : and - indicators.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML007",
+        name: "no-bad-scalar-start",
+        shortDescription: {
+            text: "The scalar is formatted incorrectly.",
+        },
+        fullDescription: {
+            text: "Plain scalars cannot start with a block scalar indicator, or one of the two reserved characters: @ and `.",
+        },
+        help: {
+            text: "To fix, use a block or quoted scalar for the value",
+        },
+    },
+    {
+        id: "YML008",
+        name: "no-block-as-implicit-key",
+        shortDescription: {
+            text: "The identation is incorrect.",
+        },
+        fullDescription: {
+            text: "There's probably something wrong with the indentation, or you're trying to parse something like a: b: c, where it's not clear what's the key and what's the value.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML009",
+        name: "no-block-in-flow",
+        shortDescription: {
+            text: "Cannot use block within flow.",
+        },
+        fullDescription: {
+            text: "YAML scalars and collections both have block and flow styles. Flow is allowed within block, but not the other way around.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML010",
+        name: "no-duplicate-key",
+        shortDescription: {
+            text: "Cannot use duplicate keys.",
+        },
+        fullDescription: {
+            text: "Keys within a map must be unique.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML011",
+        name: "impossible",
+        shortDescription: {
+            text: "Something unexpected went wrong",
+        },
+        fullDescription: {
+            text: "This really should not happen. If you encounter this error code, please file a bug.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML012",
+        name: "no-long-key",
+        shortDescription: {
+            text: "The key is longer than 1024 characters.",
+        },
+        fullDescription: {
+            text: "Due to legacy reasons, implicit keys must have their following : indicator after at most 1k characters.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML013",
+        name: "no-missing-anchor",
+        shortDescription: {
+            text: "The anchor is missing.",
+        },
+        fullDescription: {
+            text: "Aliases can only dereference anchors that are before them in the document.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML014",
+        name: "no-missing-char",
+        shortDescription: {
+            text: "A character is missing.",
+        },
+        fullDescription: {
+            text: "Some character or characters are missing here. See the error message for what you need to add.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML015",
+        name: "no-multiline-implicit-key",
+        shortDescription: {
+            text: "Cannot use multiple lines with implicit keys.",
+        },
+        fullDescription: {
+            text: "Implicit keys need to be on a single line.",
+        },
+        help: {
+            text: "Does the input include a plain scalar with a : followed by whitespace, which is getting parsed as a map key?",
+        },
+    },
+    {
+        id: "YML016",
+        name: "no-multiple-anchors",
+        shortDescription: {
+            text: "Cannot have multiple anchors.",
+        },
+        fullDescription: {
+            text: "A node is only allowed to have one anchor.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML017",
+        name: "no-multiple-docs",
+        shortDescription: {
+            text: "Cannot parse this document.",
+        },
+        fullDescription: {
+            text: "A YAML stream may include multiple documents.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML018",
+        name: "no-multiple-tags",
+        shortDescription: {
+            text: "Cannot use multiple tags.",
+        },
+        fullDescription: {
+            text: "A node is only allowed to have one tag.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML019",
+        name: "no-tab-as-indent",
+        shortDescription: {
+            text: "Cannot use tabs for identation.",
+        },
+        fullDescription: {
+            text: "Only spaces are allowed as indentation.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML020",
+        name: "no-failed-tag-resolve",
+        shortDescription: {
+            text: "Cannot resolve the tag.",
+        },
+        fullDescription: {
+            text: "Something went wrong when resolving a node's tag with the current schema.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+    {
+        id: "YML021",
+        name: "no-unexpected-token",
+        shortDescription: {
+            text: "The token was unexpected.",
+        },
+        fullDescription: {
+            text: "A token was encountered in a place where it wasn't expected.",
+        },
+        help: {
+            text: NO_HELP_AVAILABLE,
+        },
+    },
+];
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/yaml-syntax/validator.js
+
+
+
+
+class YamlValidator extends AbstractValidator {
+    resourceParser;
+    static toolName = "yaml-syntax";
+    constructor(resourceParser) {
+        super(YamlValidator.toolName, YAML_RULES);
+        this.resourceParser = resourceParser;
+    }
+    async doValidate(resources, incremental) {
+        const results = [];
+        const dirtyResources = incremental
+            ? resources.filter((r) => incremental.resourceIds.includes(r.id))
+            : resources;
+        for (const resource of dirtyResources) {
+            const resourceErrors = await this.validateResource(resource);
+            results.push(...resourceErrors);
+        }
+        return results;
+    }
+    /**
+     * Parse for YAML errors that were allowed by non-strict parsing
+     */
+    async validateResource(resource) {
+        const { parsedDoc } = this.resourceParser.parse(resource, {
+            forceParse: true,
+        });
+        const results = parsedDoc.errors
+            .map((err) => this.adaptToValidationResult(resource, err))
+            .filter(isDefined);
+        return results;
+    }
+    adaptToValidationResult(resource, err) {
+        const region = this.resourceParser.parseErrorRegion(resource, err.pos);
+        const locations = createLocations(resource, region);
+        const ruleId = YAML_RULE_MAP[err.code];
+        return this.createValidationResult(ruleId, {
+            message: {
+                text: err.message,
+            },
+            locations,
+        });
+    }
 }
 
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/MonokleValidator.js
@@ -31514,32 +44883,162 @@ function isDefined(value) {
 
 
 
+
+
+
+
+
+
+
+function createMonokleValidator(loader, defaultConfig) {
+    return new MonokleValidator(loader, defaultConfig);
+}
+function createDefaultMonokleValidator(parser = new ResourceParser(), schemaLoader = new SchemaLoader()) {
+    return new MonokleValidator(createDefaultPluginLoader(parser, schemaLoader), {
+        plugins: {
+            "open-policy-agent": true,
+            "resource-links": true,
+            "yaml-syntax": true,
+            labels: true,
+            "kubernetes-schema": true,
+        },
+    });
+}
+function createDefaultPluginLoader(parser = new ResourceParser(), schemaLoader = new SchemaLoader()) {
+    return async (pluginName) => {
+        switch (pluginName) {
+            case "open-policy-agent":
+                const wasmLoader = new RemoteWasmLoader();
+                return new OpenPolicyAgentValidator(parser, wasmLoader);
+            case "resource-links":
+                return new ResourceLinksValidator();
+            case "yaml-syntax":
+                return new YamlValidator(parser);
+            case "labels":
+                return new LabelsValidator(parser);
+            case "kubernetes-schema":
+                return new KubernetesSchemaValidator(parser, schemaLoader);
+            default:
+                throw new Error("validator_not_found");
+        }
+    };
+}
 class MonokleValidator {
-    config;
-    #validators;
-    constructor(validators, config = {}) {
-        this.config = config;
-        const parser = config.parser ?? new ResourceParser();
-        this.#validators = validators.map((v) => typeof v === "function" ? new v(parser) : v);
+    #config;
+    #abortController = new AbortController();
+    #loading;
+    #loader;
+    #previousPluginsInit;
+    #validators = [];
+    constructor(loader, defaultConfig = {}) {
+        this.#loader = loader;
+        this.#config = {
+            default: defaultConfig,
+            merged: defaultConfig,
+        };
     }
-    async configure(config) {
-        const normalizedConfig = isArray(config) ? config : [config];
-        await Promise.all(normalizedConfig.map((c) => {
-            const validator = this.#validators.find((v) => v.name === c.tool);
-            tiny_invariant_cjs(validator, NOT_FOUND_ERR_MSG(c.tool));
-            return validator.load(c);
-        }));
+    get config() {
+        return this.#config;
+    }
+    isRuleEnabled(rule) {
+        return Boolean(this.#config.merged.rules?.[rule]);
+    }
+    isPluginEnabled(name) {
+        return Boolean(this.#config.merged.plugins?.[name]);
+    }
+    configureFile(config) {
+        this.#config.file = config;
+        this.#config.merged = this.mergeConfiguration();
+        this.cancelLoad("configuration-file-updated");
+    }
+    configureArgs(config) {
+        this.#config.args = config;
+        this.#config.merged = this.mergeConfiguration();
+        this.cancelLoad("args-updated");
+    }
+    mergeConfiguration() {
+        return merge(this.#config.default, this.#config.file, this.#config.args);
+    }
+    get tools() {
+        return this.#validators;
+    }
+    /**
+     * Eagerly load and configure the validation plugins.
+     *
+     * @param config
+     */
+    async preload(config = {}) {
+        if (config.file === undefined || typeof config.file === "object") {
+            this.configureFile(config.file);
+        }
+        if (config.args === undefined || typeof config.args === "object") {
+            this.configureArgs(config.args);
+        }
+        return this.load();
+    }
+    load() {
+        this.#abortController.abort();
+        this.#abortController = new AbortController();
+        this.#loading = this.doLoad(this.#abortController.signal);
+        return this.#loading;
+    }
+    cancelLoad(reason = "cancelled") {
+        this.#abortController.abort(reason);
+        this.#loading = undefined;
+    }
+    async doLoad(signal) {
+        const config = this.#config.merged;
+        const previousPlugins = this.#previousPluginsInit;
+        if (!isEqual(config.plugins, previousPlugins)) {
+            // Ensure all validators are loaded
+            const plugins = config.plugins ?? {};
+            for (const [name, value] of Object.entries(plugins)) {
+                if (!value)
+                    continue;
+                const hasValidator = this.#validators.find((v) => v.name === name);
+                if (hasValidator)
+                    continue;
+                const validator = await this.#loader(name);
+                if (signal.aborted)
+                    return;
+                this.#validators.push(validator);
+            }
+            // Toggle validators
+            for (const validator of this.#validators) {
+                const value = plugins[validator.name];
+                validator.enabled = Boolean(value);
+            }
+            this.#previousPluginsInit = plugins;
+        }
+        // Configure validators
+        for (const validator of this.#validators) {
+            await validator.configure({
+                rules: config.rules,
+                settings: config.settings,
+            });
+            if (signal.aborted)
+                return;
+        }
     }
     /**
      * Validates the resources.
      */
-    async validate(resources, incremental) {
+    async validate({ resources, incremental, }) {
+        if (this.#loading === undefined) {
+            this.load();
+        }
+        const abortSignal = this.#abortController.signal;
+        await this.#loading;
+        throwIfAborted(abortSignal);
         const validators = this.#validators.filter((v) => v.enabled);
+        await nextTick();
+        throwIfAborted(abortSignal);
         const allRuns = await Promise.allSettled(validators.map((v) => v.validate(resources, incremental)));
+        throwIfAborted(abortSignal);
         const runs = allRuns
             .map((run) => (run.status === "fulfilled" ? run.value : undefined))
             .filter(isDefined);
-        if (this.config.debug && allRuns.length !== runs.length) {
+        if (this.#config.merged.settings?.debug && allRuns.length !== runs.length) {
             const failedRuns = allRuns.filter((r) => r.status === "rejected");
             // eslint-disable-next-line no-console
             console.warn("skipped failed validators", failedRuns);
@@ -31553,165 +45052,49 @@ class MonokleValidator {
     /**
      * Clear the incremental caches.
      */
-    async clear() { }
-}
-
-;// CONCATENATED MODULE: ./lib/validator.js
-
-function createValidator() {
-    const parser = new ResourceParser();
-    const labelsValidator = new LabelsValidator(parser);
-    const yamlValidator = new YamlValidator(parser);
-    const schemaLoader = new SchemaLoader();
-    const schemaValidator = new KubernetesSchemaValidator(parser, schemaLoader);
-    const resourceLinksValidator = new ResourceLinksValidator();
-    const validator = new MonokleValidator([
-        labelsValidator,
-        yamlValidator,
-        schemaValidator,
-        resourceLinksValidator,
-    ]);
-    return validator;
-}
-function configureValidator(validator) {
-    return validator.configure([
-        {
-            tool: "labels",
-            enabled: true,
-        },
-        {
-            tool: "yaml-syntax",
-            enabled: true,
-        },
-        {
-            tool: "resource-links",
-            enabled: true,
-        },
-        {
-            tool: "kubernetes-schema",
-            enabled: true,
-            schemaVersion: "1.24.2",
-        },
-    ]);
-}
-
-// EXTERNAL MODULE: ./node_modules/isomorphic-fetch/fetch-npm-node.js
-var fetch_npm_node = __nccwpck_require__(2340);
-// EXTERNAL MODULE: external "path"
-var external_path_ = __nccwpck_require__(1017);
-// EXTERNAL MODULE: ./node_modules/uuid/dist/index.js
-var uuid_dist = __nccwpck_require__(5840);
-;// CONCATENATED MODULE: ./node_modules/uuid/wrapper.mjs
-
-const v1 = uuid_dist.v1;
-const v3 = uuid_dist.v3;
-const v4 = uuid_dist.v4;
-const v5 = uuid_dist.v5;
-const NIL = uuid_dist/* NIL */.zR;
-const version = uuid_dist/* version */.i8;
-const validate = uuid_dist/* validate */.Gu;
-const stringify = uuid_dist/* stringify */.Pz;
-const parse = uuid_dist/* parse */.Qc;
-
-;// CONCATENATED MODULE: ./lib/parse.js
-
-
-
-const KUSTOMIZATION_KIND = "Kustomization";
-const KUSTOMIZATION_API_GROUP = "kustomize.config.k8s.io";
-function extractK8sResources(files) {
-    const resources = [];
-    for (const file of files) {
-        const lineCounter = new dist/* LineCounter */.Yj();
-        const documents = parseAllYamlDocuments(file.content, lineCounter);
-        for (const document of documents) {
-            const content = document.toJS();
-            if (document.errors.length) {
-                continue;
-            }
-            const rawFileOffset = lineCounter.linePos(document.range[0]).line;
-            const fileOffset = rawFileOffset === 1 ? 0 : rawFileOffset;
-            const resourceBase = {
-                apiVersion: content.apiVersion,
-                kind: content.kind,
-                content,
-                fileId: file.id,
-                filePath: file.path,
-                fileOffset,
-                text: document.toString({ directives: false }),
-            };
-            if (isKubernetesLike(content)) {
-                const name = createResourceName(file.path, content, content.kind);
-                const id = createResourceId(file.id, content.kind, name, content.metadata?.namespace);
-                const namespace = extractNamespace(content);
-                const resource = {
-                    ...resourceBase,
-                    id,
-                    name,
-                    namespace,
-                };
-                resources.push(resource);
-            }
-            else if (content &&
-                isUntypedKustomizationFile(file.path) &&
-                documents.length === 1) {
-                const name = createResourceName(file.path, content, KUSTOMIZATION_KIND);
-                const id = createResourceId(file.id, name, KUSTOMIZATION_KIND);
-                const resource = {
-                    ...resourceBase,
-                    id,
-                    name,
-                };
-                resources.push(resource);
-            }
-        }
+    async clear() {
+        await Promise.all(this.#validators.map((v) => v.clear()));
     }
-    return resources;
-}
-function isKubernetesLike(content) {
-    return (content &&
-        typeof content.apiVersion === "string" &&
-        typeof content.kind === "string");
-}
-function isUntypedKustomizationFile(filePath = "") {
-    return /kustomization*.yaml/.test(filePath.toLowerCase().trim());
-}
-function isYamlFile(file) {
-    return file.path.endsWith(".yml") || file.path.endsWith(".yaml");
-}
-function parse_parseYamlDocument(text, lineCounter) {
-    return parseDocument(text, { lineCounter, uniqueKeys: false, strict: false });
-}
-function parseAllYamlDocuments(text, lineCounter) {
-    return (0,dist/* parseAllDocuments */.Ej)(text, {
-        lineCounter,
-        uniqueKeys: false,
-        strict: false,
-    });
-}
-function extractNamespace(content) {
-    return content.metadata?.namespace &&
-        typeof content.metadata.namespace === "string"
-        ? content.metadata.namespace
-        : undefined;
-}
-const RESOURCE_UUID_NAMESPACE = "6fa71997-8aa8-4b89-b987-cec4fd3de770";
-const createResourceId = (fileId, name, kind, namespace) => {
-    return v5(`${fileId}${kind}${name}${namespace || ""}`, RESOURCE_UUID_NAMESPACE);
-};
-function createResourceName(filePath, content, kind) {
-    const parsedPath = (0,external_path_.parse)(filePath);
-    try {
-        return typeof content.metadata.name === "string"
-            ? content.metadata.name.trim()
-            : JSON.stringify(content.metadata.name).trim();
-    }
-    catch (error) {
-        return parsedPath.name;
+    async unload() {
+        this.cancelLoad("unload");
+        this.configureFile(undefined);
+        this.configureArgs(undefined);
     }
 }
-function getResourcesForPath(filePath, resourceMap) {
-    return Object.values(resourceMap).filter((resource) => resource?.filePath === filePath);
+
+;// CONCATENATED MODULE: external "fs/promises"
+const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs/promises");
+// EXTERNAL MODULE: external "fs"
+var external_fs_ = __nccwpck_require__(7147);
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/config/parse.js
+
+const configSchema = objectType({
+    name: stringType().optional(),
+    version: stringType().optional(),
+    plugins: recordType(booleanType()).optional(),
+    rules: recordType(booleanType().or(enumType(["warn", "err"]))).optional(),
+});
+/**
+ * Parse the configuration as Monokle Config.
+ */
+function parseConfig(config) {
+    return configSchema.parse(config);
+}
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/config/read.node.js
+
+
+
+
+const DEFAULT_CONFIG_PATH = "monokle.validation.yaml";
+async function readConfig(path = DEFAULT_CONFIG_PATH) {
+    if (!external_fs_.existsSync(path)) {
+        return undefined;
+    }
+    const data = await promises_namespaceObject.readFile(path, "utf8");
+    const content = dist.parse(data);
+    const config = parseConfig(content);
+    return config;
 }
 
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/getRule.js
@@ -31989,6 +45372,172 @@ function printResponse(response) {
     }
 }
 
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(1017);
+// EXTERNAL MODULE: ./node_modules/uuid/dist/index.js
+var uuid_dist = __nccwpck_require__(5840);
+;// CONCATENATED MODULE: ./node_modules/uuid/wrapper.mjs
+
+const v1 = uuid_dist.v1;
+const v3 = uuid_dist.v3;
+const v4 = uuid_dist.v4;
+const v5 = uuid_dist.v5;
+const NIL = uuid_dist/* NIL */.zR;
+const version = uuid_dist/* version */.i8;
+const validate = uuid_dist/* validate */.Gu;
+const stringify = uuid_dist/* stringify */.Pz;
+const parse = uuid_dist/* parse */.Qc;
+
+;// CONCATENATED MODULE: ./lib/parse.js
+
+
+
+const parse_KUSTOMIZATION_KIND = "Kustomization";
+const parse_KUSTOMIZATION_API_GROUP = "kustomize.config.k8s.io";
+function extractK8sResources(files) {
+    const resources = [];
+    for (const file of files) {
+        const lineCounter = new dist.LineCounter();
+        const documents = parseAllYamlDocuments(file.content, lineCounter);
+        for (const document of documents) {
+            const content = document.toJS();
+            if (document.errors.length) {
+                continue;
+            }
+            const rawFileOffset = lineCounter.linePos(document.range[0]).line;
+            const fileOffset = rawFileOffset === 1 ? 0 : rawFileOffset;
+            const resourceBase = {
+                apiVersion: content.apiVersion,
+                kind: content.kind,
+                content,
+                fileId: file.id,
+                filePath: file.path,
+                fileOffset,
+                text: document.toString({ directives: false }),
+            };
+            if (isKubernetesLike(content)) {
+                const name = createResourceName(file.path, content, content.kind);
+                const id = createResourceId(file.id, content.kind, name, content.metadata?.namespace);
+                const namespace = extractNamespace(content);
+                const resource = {
+                    ...resourceBase,
+                    id,
+                    name,
+                    namespace,
+                };
+                resources.push(resource);
+            }
+            else if (content &&
+                isUntypedKustomizationFile(file.path) &&
+                documents.length === 1) {
+                const name = createResourceName(file.path, content, parse_KUSTOMIZATION_KIND);
+                const id = createResourceId(file.id, name, parse_KUSTOMIZATION_KIND);
+                const resource = {
+                    ...resourceBase,
+                    id,
+                    name,
+                };
+                resources.push(resource);
+            }
+        }
+    }
+    return resources;
+}
+function isKubernetesLike(content) {
+    return (content &&
+        typeof content.apiVersion === "string" &&
+        typeof content.kind === "string");
+}
+function isUntypedKustomizationFile(filePath = "") {
+    return /kustomization*.yaml/.test(filePath.toLowerCase().trim());
+}
+function isYamlFile(file) {
+    return file.path.endsWith(".yml") || file.path.endsWith(".yaml");
+}
+function parse_parseYamlDocument(text, lineCounter) {
+    return parseDocument(text, { lineCounter, uniqueKeys: false, strict: false });
+}
+function parseAllYamlDocuments(text, lineCounter) {
+    return (0,dist.parseAllDocuments)(text, {
+        lineCounter,
+        uniqueKeys: false,
+        strict: false,
+    });
+}
+function extractNamespace(content) {
+    return content.metadata?.namespace &&
+        typeof content.metadata.namespace === "string"
+        ? content.metadata.namespace
+        : undefined;
+}
+const RESOURCE_UUID_NAMESPACE = "6fa71997-8aa8-4b89-b987-cec4fd3de770";
+const createResourceId = (fileId, name, kind, namespace) => {
+    return v5(`${fileId}${kind}${name}${namespace || ""}`, RESOURCE_UUID_NAMESPACE);
+};
+function createResourceName(filePath, content, kind) {
+    const parsedPath = (0,external_path_.parse)(filePath);
+    try {
+        return typeof content.metadata.name === "string"
+            ? content.metadata.name.trim()
+            : JSON.stringify(content.metadata.name).trim();
+    }
+    catch (error) {
+        return parsedPath.name;
+    }
+}
+function getResourcesForPath(filePath, resourceMap) {
+    return Object.values(resourceMap).filter((resource) => resource?.filePath === filePath);
+}
+
+// EXTERNAL MODULE: ./node_modules/isomorphic-fetch/fetch-npm-node.js
+var fetch_npm_node = __nccwpck_require__(2340);
+// EXTERNAL MODULE: ./node_modules/lodash/chunk.js
+var lodash_chunk = __nccwpck_require__(9908);
+// EXTERNAL MODULE: ./node_modules/tiny-glob/index.js
+var tiny_glob = __nccwpck_require__(1343);
+;// CONCATENATED MODULE: ./lib/readFiles.js
+
+
+
+
+async function readFiles(path) {
+    if (isFileLike(path)) {
+        const file = await readFile(path);
+        return [file];
+    }
+    else {
+        return readDirectory(path);
+    }
+}
+function isFileLike(path) {
+    return (0,external_fs_.lstatSync)(path).isFile();
+}
+async function readFile(path) {
+    const content = await (0,promises_namespaceObject.readFile)(path, "utf8");
+    return {
+        id: path,
+        path,
+        content,
+    };
+}
+async function readDirectory(directoryPath) {
+    const filePaths = await tiny_glob(`${directoryPath}/**/*.{yaml,yml}`);
+    const files = [];
+    for (const chunk of lodash_chunk(filePaths, 5)) {
+        const promise = await Promise.allSettled(chunk.map(async (path) => {
+            const content = await (0,promises_namespaceObject.readFile)(path, "utf8");
+            return { id: path, path, content };
+        }));
+        for (const result of promise) {
+            if (result.status === "rejected") {
+                continue;
+            }
+            files.push(result.value);
+        }
+    }
+    return files;
+}
+
 ;// CONCATENATED MODULE: ./lib/main.js
 
 
@@ -31999,14 +45548,18 @@ function printResponse(response) {
 
 async function run() {
     try {
-        const validator = createValidator();
-        await configureValidator(validator);
-        const resources = await getResources();
+        const validator = createDefaultMonokleValidator();
+        const configPath = core.getInput("config") ?? "monokle.validation.yaml";
+        const config = await readConfig(configPath);
+        await validator.preload({ file: config });
+        const inputPath = core.getInput("path");
+        const files = await readFiles(inputPath);
+        const resources = extractK8sResources(files);
         if (resources.length === 0) {
             core.warning("No resources found");
             return;
         }
-        const response = await validator.validate(resources);
+        const response = await validator.validate({ resources });
         const errorCount = response.runs.reduce((sum, r) => sum + r.results.length, 0);
         printResponse(response);
         await outputSarifResponse(response);
@@ -32021,20 +45574,6 @@ async function run() {
         if (error instanceof Error)
             core.setFailed(`[unexpected] ${error.message}`);
     }
-}
-async function getResources() {
-    const bundle = await getBundle();
-    return extractK8sResources([bundle]);
-}
-async function getBundle() {
-    const inputPath = core.getInput("path");
-    const data = await promises_namespaceObject.readFile(inputPath);
-    const content = data.toString();
-    return {
-        id: "bundle",
-        content,
-        path: inputPath,
-    };
 }
 async function outputSarifResponse(response) {
     const outputPath = `monokle-${Date.now()}.sarif`;
