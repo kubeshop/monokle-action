@@ -5,9 +5,11 @@ runs:
   main: "dist/index.js"
 inputs:
   path:
-    description: "Path to a YAML file which bundles Kubernetes resources."
+    description: "Relative path to a directory or a YAML file with Kubernetes resources."
     default: "bundle.yaml"
-    required: true
+  config:
+    description: "Relative path to the Monokle validation configuration file."
+    default: "monokle.validation.yaml"
 outputs:
   sarif:
     description: "Relative path to a SARIF file which contains the validation response."

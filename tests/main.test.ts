@@ -6,6 +6,7 @@ import { test } from "vitest";
 test("it should run the GitHub action", () => {
   try {
     const output = runAction({
+      INPUT_CONFIG: "monokle.validation.yaml",
       INPUT_PATH: "./tests/assets/multiple-bad-resources.yaml",
       RUNNER_TEMP: "./tests/output",
     });

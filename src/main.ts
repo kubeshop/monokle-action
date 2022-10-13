@@ -1,27 +1,34 @@
 import * as core from "@actions/core";
-import * as fs from "fs/promises";
 import * as fse from "fs-extra";
-import * as path from "path";
-import { configureValidator, createValidator } from "./validator.js";
+
+import {
+  createDefaultMonokleValidator,
+  readConfig,
+  ValidationResponse,
+} from "@monokle/validation";
+import { printResponse } from "./io.js";
+import { extractK8sResources } from "./parse.js";
 
 import "isomorphic-fetch";
-import { extractK8sResources, File } from "./parse.js";
-import { printResponse } from "./io.js";
-import { Resource, ValidationResponse } from "@monokle/validation";
+import { readFiles } from "./readFiles.js";
 
 async function run(): Promise<void> {
   try {
-    const validator = createValidator();
-    await configureValidator(validator);
+    const validator = createDefaultMonokleValidator();
+    const configPath = core.getInput("config") ?? "monokle.validation.yaml";
+    const config = await readConfig(configPath);
+    await validator.preload({ file: config });
 
-    const resources = await getResources();
+    const inputPath = core.getInput("path");
+    const files = await readFiles(inputPath);
+    const resources = extractK8sResources(files);
 
     if (resources.length === 0) {
       core.warning("No resources found");
       return;
     }
 
-    const response = await validator.validate(resources);
+    const response = await validator.validate({ resources });
 
     const errorCount = response.runs.reduce(
       (sum, r) => sum + r.results.length,
@@ -40,23 +47,6 @@ async function run(): Promise<void> {
   } catch (error) {
     if (error instanceof Error) core.setFailed(`[unexpected] ${error.message}`);
   }
-}
-
-async function getResources(): Promise<Resource[]> {
-  const bundle = await getBundle();
-  return extractK8sResources([bundle]);
-}
-
-async function getBundle(): Promise<File> {
-  const inputPath = core.getInput("path");
-  const data = await fs.readFile(inputPath);
-  const content = data.toString();
-
-  return {
-    id: "bundle",
-    content,
-    path: inputPath,
-  };
 }
 
 async function outputSarifResponse(
