@@ -150,7 +150,7 @@ The Monokle Action looks for a Monokle Validation configuration.
 
 The default path is found at `./monokle.validation.yaml`.
 
-[Learn more about Monokle Validation configuration][config-docs]
+[Learn more about Monokle Validation configuration][monokle-validation-docs]
 
 **Example**
 
@@ -171,5 +171,5 @@ settings:
 ```
 
 [monokle-validation]: https://github.com/kubeshop/monokle-core/tree/main/packages/validation
-[config-docs]: https://github.com/kubeshop/monokle-core/tree/main/packages/validation
+[monokle-validation-docs]: https://github.com/kubeshop/monokle-core/blob/main/packages/validation/docs/configuration.md
 [demo-pr]: https://github.com/kubeshop/monokle-demo/pull/1
