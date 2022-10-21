@@ -1,5 +1,9 @@
 name: "Monokle Validation"
-description: "Validate your Kubernetes resources."
+author: "Kubeshop"
+description: "Monokle Action analyzes your Kubernetes resources to quickly find misconfigurations."
+branding:
+  icon: "activity"
+  color: "white"
 runs:
   using: "node16"
   main: "dist/index.js"
