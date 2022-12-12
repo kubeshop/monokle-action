@@ -32,6 +32,7 @@ Under the hood it uses [@monokle/validation][monokle-validation] which allows yo
 - [Welcome to Monokle Action](#welcome-to-monokle-action)
 - [Table of content](#table-of-content)
 - [Usage](#usage)
+  - [Understanding the Action's result](#understanding-the-actions-result)
   - [Validate the output of Kustomize](#validate-the-output-of-kustomize)
   - [Validate the output of Helm](#validate-the-output-of-helm)
   - [Validate default Kubernetes resources](#validate-default-kubernetes-resources)
@@ -41,6 +42,14 @@ Under the hood it uses [@monokle/validation][monokle-validation] which allows yo
   - [@monokle/validation rules](#monoklevalidation-rules)
 
 ## Usage
+
+### Understanding the Action's result
+
+The action will find problems for you.
+
+You can configure the validator whether a problem is an error or a warning.
+
+The action fails when at least one error is found. Only warnings will not result in a failure and allow you to still merge. This allows for transition periods in your policies.
 
 ### Validate the output of Kustomize
 
