@@ -1,6 +1,25 @@
 import './sourcemap-register.cjs';import { createRequire as __WEBPACK_EXTERNAL_createRequire } from "module";
 /******/ var __webpack_modules__ = ({
 
+/***/ 5109:
+/***/ ((module) => {
+
+function webpackEmptyAsyncContext(req) {
+	// Here Promise.resolve().then() is used instead of new Promise() to prevent
+	// uncaught exception popping up in devtools
+	return Promise.resolve().then(() => {
+		var e = new Error("Cannot find module '" + req + "'");
+		e.code = 'MODULE_NOT_FOUND';
+		throw e;
+	});
+}
+webpackEmptyAsyncContext.keys = () => ([]);
+webpackEmptyAsyncContext.resolve = webpackEmptyAsyncContext;
+webpackEmptyAsyncContext.id = 5109;
+module.exports = webpackEmptyAsyncContext;
+
+/***/ }),
+
 /***/ 7351:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -8569,6 +8588,113 @@ function validateKeyword(definition, throwError) {
 
 /***/ }),
 
+/***/ 3638:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.camelCase = exports.camelCaseTransformMerge = exports.camelCaseTransform = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var pascal_case_1 = __nccwpck_require__(5995);
+function camelCaseTransform(input, index) {
+    if (index === 0)
+        return input.toLowerCase();
+    return pascal_case_1.pascalCaseTransform(input, index);
+}
+exports.camelCaseTransform = camelCaseTransform;
+function camelCaseTransformMerge(input, index) {
+    if (index === 0)
+        return input.toLowerCase();
+    return pascal_case_1.pascalCaseTransformMerge(input);
+}
+exports.camelCaseTransformMerge = camelCaseTransformMerge;
+function camelCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return pascal_case_1.pascalCase(input, tslib_1.__assign({ transform: camelCaseTransform }, options));
+}
+exports.camelCase = camelCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 8824:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.capitalCase = exports.capitalCaseTransform = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+var upper_case_first_1 = __nccwpck_require__(6256);
+function capitalCaseTransform(input) {
+    return upper_case_first_1.upperCaseFirst(input.toLowerCase());
+}
+exports.capitalCaseTransform = capitalCaseTransform;
+function capitalCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: " ", transform: capitalCaseTransform }, options));
+}
+exports.capitalCase = capitalCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 9091:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+var tslib_1 = __nccwpck_require__(4351);
+tslib_1.__exportStar(__nccwpck_require__(3638), exports);
+tslib_1.__exportStar(__nccwpck_require__(8824), exports);
+tslib_1.__exportStar(__nccwpck_require__(6878), exports);
+tslib_1.__exportStar(__nccwpck_require__(2246), exports);
+tslib_1.__exportStar(__nccwpck_require__(3657), exports);
+tslib_1.__exportStar(__nccwpck_require__(397), exports);
+tslib_1.__exportStar(__nccwpck_require__(8452), exports);
+tslib_1.__exportStar(__nccwpck_require__(5995), exports);
+tslib_1.__exportStar(__nccwpck_require__(3553), exports);
+tslib_1.__exportStar(__nccwpck_require__(9229), exports);
+tslib_1.__exportStar(__nccwpck_require__(6213), exports);
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 6878:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.constantCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+var upper_case_1 = __nccwpck_require__(5997);
+function constantCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: "_", transform: upper_case_1.upperCase }, options));
+}
+exports.constantCase = constantCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 2246:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.dotCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+function dotCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: "." }, options));
+}
+exports.dotCase = dotCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
 /***/ 8206:
 /***/ ((module) => {
 
@@ -12004,6 +12130,23 @@ function patch (fs) {
 
 /***/ }),
 
+/***/ 3657:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.headerCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var capital_case_1 = __nccwpck_require__(8824);
+function headerCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return capital_case_1.capitalCase(input, tslib_1.__assign({ delimiter: "-" }, options));
+}
+exports.headerCase = headerCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
 /***/ 2340:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -12577,6 +12720,35 @@ module.exports = arrayAggregator;
 
 /***/ }),
 
+/***/ 8403:
+/***/ ((module) => {
+
+/**
+ * A specialized version of `_.forEach` for arrays without support for
+ * iteratee shorthands.
+ *
+ * @private
+ * @param {Array} [array] The array to iterate over.
+ * @param {Function} iteratee The function invoked per iteration.
+ * @returns {Array} Returns `array`.
+ */
+function arrayEach(array, iteratee) {
+  var index = -1,
+      length = array == null ? 0 : array.length;
+
+  while (++index < length) {
+    if (iteratee(array[index], index, array) === false) {
+      break;
+    }
+  }
+  return array;
+}
+
+module.exports = arrayEach;
+
+
+/***/ }),
+
 /***/ 8388:
 /***/ ((module) => {
 
@@ -12605,6 +12777,59 @@ function arrayFilter(array, predicate) {
 }
 
 module.exports = arrayFilter;
+
+
+/***/ }),
+
+/***/ 7183:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseIndexOf = __nccwpck_require__(5425);
+
+/**
+ * A specialized version of `_.includes` for arrays without support for
+ * specifying an index to search from.
+ *
+ * @private
+ * @param {Array} [array] The array to inspect.
+ * @param {*} target The value to search for.
+ * @returns {boolean} Returns `true` if `target` is found, else `false`.
+ */
+function arrayIncludes(array, value) {
+  var length = array == null ? 0 : array.length;
+  return !!length && baseIndexOf(array, value, 0) > -1;
+}
+
+module.exports = arrayIncludes;
+
+
+/***/ }),
+
+/***/ 6732:
+/***/ ((module) => {
+
+/**
+ * This function is like `arrayIncludes` except that it accepts a comparator.
+ *
+ * @private
+ * @param {Array} [array] The array to inspect.
+ * @param {*} target The value to search for.
+ * @param {Function} comparator The comparator invoked per element.
+ * @returns {boolean} Returns `true` if `target` is found, else `false`.
+ */
+function arrayIncludesWith(array, value, comparator) {
+  var index = -1,
+      length = array == null ? 0 : array.length;
+
+  while (++index < length) {
+    if (comparator(value, array[index])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+module.exports = arrayIncludesWith;
 
 
 /***/ }),
@@ -12750,33 +12975,6 @@ module.exports = arraySome;
 
 /***/ }),
 
-/***/ 1950:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseAssignValue = __nccwpck_require__(3868),
-    eq = __nccwpck_require__(1901);
-
-/**
- * This function is like `assignValue` except that it doesn't assign
- * `undefined` values.
- *
- * @private
- * @param {Object} object The object to modify.
- * @param {string} key The key of the property to assign.
- * @param {*} value The value to assign.
- */
-function assignMergeValue(object, key, value) {
-  if ((value !== undefined && !eq(object[key], value)) ||
-      (value === undefined && !(key in object))) {
-    baseAssignValue(object, key, value);
-  }
-}
-
-module.exports = assignMergeValue;
-
-
-/***/ }),
-
 /***/ 9725:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -12840,7 +13038,7 @@ module.exports = assocIndexOf;
 
 /***/ }),
 
-/***/ 4524:
+/***/ 9692:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var baseEach = __nccwpck_require__(3236);
@@ -12864,6 +13062,54 @@ function baseAggregator(collection, setter, iteratee, accumulator) {
 }
 
 module.exports = baseAggregator;
+
+
+/***/ }),
+
+/***/ 1368:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var copyObject = __nccwpck_require__(6388),
+    keys = __nccwpck_require__(7645);
+
+/**
+ * The base implementation of `_.assign` without support for multiple sources
+ * or `customizer` functions.
+ *
+ * @private
+ * @param {Object} object The destination object.
+ * @param {Object} source The source object.
+ * @returns {Object} Returns `object`.
+ */
+function baseAssign(object, source) {
+  return object && copyObject(source, keys(source), object);
+}
+
+module.exports = baseAssign;
+
+
+/***/ }),
+
+/***/ 428:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var copyObject = __nccwpck_require__(6388),
+    keysIn = __nccwpck_require__(9109);
+
+/**
+ * The base implementation of `_.assignIn` without support for multiple sources
+ * or `customizer` functions.
+ *
+ * @private
+ * @param {Object} object The destination object.
+ * @param {Object} source The source object.
+ * @returns {Object} Returns `object`.
+ */
+function baseAssignIn(object, source) {
+  return object && copyObject(source, keysIn(source), object);
+}
+
+module.exports = baseAssignIn;
 
 
 /***/ }),
@@ -12896,6 +13142,179 @@ function baseAssignValue(object, key, value) {
 }
 
 module.exports = baseAssignValue;
+
+
+/***/ }),
+
+/***/ 3040:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var Stack = __nccwpck_require__(5323),
+    arrayEach = __nccwpck_require__(8403),
+    assignValue = __nccwpck_require__(9725),
+    baseAssign = __nccwpck_require__(1368),
+    baseAssignIn = __nccwpck_require__(428),
+    cloneBuffer = __nccwpck_require__(2974),
+    copyArray = __nccwpck_require__(5157),
+    copySymbols = __nccwpck_require__(6631),
+    copySymbolsIn = __nccwpck_require__(1136),
+    getAllKeys = __nccwpck_require__(8009),
+    getAllKeysIn = __nccwpck_require__(4291),
+    getTag = __nccwpck_require__(941),
+    initCloneArray = __nccwpck_require__(9763),
+    initCloneByTag = __nccwpck_require__(6501),
+    initCloneObject = __nccwpck_require__(1532),
+    isArray = __nccwpck_require__(4869),
+    isBuffer = __nccwpck_require__(4190),
+    isMap = __nccwpck_require__(9718),
+    isObject = __nccwpck_require__(3334),
+    isSet = __nccwpck_require__(8371),
+    keys = __nccwpck_require__(7645),
+    keysIn = __nccwpck_require__(9109);
+
+/** Used to compose bitmasks for cloning. */
+var CLONE_DEEP_FLAG = 1,
+    CLONE_FLAT_FLAG = 2,
+    CLONE_SYMBOLS_FLAG = 4;
+
+/** `Object#toString` result references. */
+var argsTag = '[object Arguments]',
+    arrayTag = '[object Array]',
+    boolTag = '[object Boolean]',
+    dateTag = '[object Date]',
+    errorTag = '[object Error]',
+    funcTag = '[object Function]',
+    genTag = '[object GeneratorFunction]',
+    mapTag = '[object Map]',
+    numberTag = '[object Number]',
+    objectTag = '[object Object]',
+    regexpTag = '[object RegExp]',
+    setTag = '[object Set]',
+    stringTag = '[object String]',
+    symbolTag = '[object Symbol]',
+    weakMapTag = '[object WeakMap]';
+
+var arrayBufferTag = '[object ArrayBuffer]',
+    dataViewTag = '[object DataView]',
+    float32Tag = '[object Float32Array]',
+    float64Tag = '[object Float64Array]',
+    int8Tag = '[object Int8Array]',
+    int16Tag = '[object Int16Array]',
+    int32Tag = '[object Int32Array]',
+    uint8Tag = '[object Uint8Array]',
+    uint8ClampedTag = '[object Uint8ClampedArray]',
+    uint16Tag = '[object Uint16Array]',
+    uint32Tag = '[object Uint32Array]';
+
+/** Used to identify `toStringTag` values supported by `_.clone`. */
+var cloneableTags = {};
+cloneableTags[argsTag] = cloneableTags[arrayTag] =
+cloneableTags[arrayBufferTag] = cloneableTags[dataViewTag] =
+cloneableTags[boolTag] = cloneableTags[dateTag] =
+cloneableTags[float32Tag] = cloneableTags[float64Tag] =
+cloneableTags[int8Tag] = cloneableTags[int16Tag] =
+cloneableTags[int32Tag] = cloneableTags[mapTag] =
+cloneableTags[numberTag] = cloneableTags[objectTag] =
+cloneableTags[regexpTag] = cloneableTags[setTag] =
+cloneableTags[stringTag] = cloneableTags[symbolTag] =
+cloneableTags[uint8Tag] = cloneableTags[uint8ClampedTag] =
+cloneableTags[uint16Tag] = cloneableTags[uint32Tag] = true;
+cloneableTags[errorTag] = cloneableTags[funcTag] =
+cloneableTags[weakMapTag] = false;
+
+/**
+ * The base implementation of `_.clone` and `_.cloneDeep` which tracks
+ * traversed objects.
+ *
+ * @private
+ * @param {*} value The value to clone.
+ * @param {boolean} bitmask The bitmask flags.
+ *  1 - Deep clone
+ *  2 - Flatten inherited properties
+ *  4 - Clone symbols
+ * @param {Function} [customizer] The function to customize cloning.
+ * @param {string} [key] The key of `value`.
+ * @param {Object} [object] The parent object of `value`.
+ * @param {Object} [stack] Tracks traversed objects and their clone counterparts.
+ * @returns {*} Returns the cloned value.
+ */
+function baseClone(value, bitmask, customizer, key, object, stack) {
+  var result,
+      isDeep = bitmask & CLONE_DEEP_FLAG,
+      isFlat = bitmask & CLONE_FLAT_FLAG,
+      isFull = bitmask & CLONE_SYMBOLS_FLAG;
+
+  if (customizer) {
+    result = object ? customizer(value, key, object, stack) : customizer(value);
+  }
+  if (result !== undefined) {
+    return result;
+  }
+  if (!isObject(value)) {
+    return value;
+  }
+  var isArr = isArray(value);
+  if (isArr) {
+    result = initCloneArray(value);
+    if (!isDeep) {
+      return copyArray(value, result);
+    }
+  } else {
+    var tag = getTag(value),
+        isFunc = tag == funcTag || tag == genTag;
+
+    if (isBuffer(value)) {
+      return cloneBuffer(value, isDeep);
+    }
+    if (tag == objectTag || tag == argsTag || (isFunc && !object)) {
+      result = (isFlat || isFunc) ? {} : initCloneObject(value);
+      if (!isDeep) {
+        return isFlat
+          ? copySymbolsIn(value, baseAssignIn(result, value))
+          : copySymbols(value, baseAssign(result, value));
+      }
+    } else {
+      if (!cloneableTags[tag]) {
+        return object ? value : {};
+      }
+      result = initCloneByTag(value, tag, isDeep);
+    }
+  }
+  // Check for circular references and return its corresponding clone.
+  stack || (stack = new Stack);
+  var stacked = stack.get(value);
+  if (stacked) {
+    return stacked;
+  }
+  stack.set(value, result);
+
+  if (isSet(value)) {
+    value.forEach(function(subValue) {
+      result.add(baseClone(subValue, bitmask, customizer, subValue, value, stack));
+    });
+  } else if (isMap(value)) {
+    value.forEach(function(subValue, key) {
+      result.set(key, baseClone(subValue, bitmask, customizer, key, value, stack));
+    });
+  }
+
+  var keysFunc = isFull
+    ? (isFlat ? getAllKeysIn : getAllKeys)
+    : (isFlat ? keysIn : keys);
+
+  var props = isArr ? undefined : keysFunc(value);
+  arrayEach(props || value, function(subValue, key) {
+    if (props) {
+      key = subValue;
+      subValue = value[key];
+    }
+    // Recursively populate clone (susceptible to call stack limits).
+    assignValue(result, key, baseClone(subValue, bitmask, customizer, key, value, stack));
+  });
+  return result;
+}
+
+module.exports = baseClone;
 
 
 /***/ }),
@@ -12937,6 +13356,80 @@ module.exports = baseCreate;
 
 /***/ }),
 
+/***/ 1259:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var SetCache = __nccwpck_require__(558),
+    arrayIncludes = __nccwpck_require__(7183),
+    arrayIncludesWith = __nccwpck_require__(6732),
+    arrayMap = __nccwpck_require__(4356),
+    baseUnary = __nccwpck_require__(9258),
+    cacheHas = __nccwpck_require__(2675);
+
+/** Used as the size to enable large array optimizations. */
+var LARGE_ARRAY_SIZE = 200;
+
+/**
+ * The base implementation of methods like `_.difference` without support
+ * for excluding multiple arrays or iteratee shorthands.
+ *
+ * @private
+ * @param {Array} array The array to inspect.
+ * @param {Array} values The values to exclude.
+ * @param {Function} [iteratee] The iteratee invoked per element.
+ * @param {Function} [comparator] The comparator invoked per element.
+ * @returns {Array} Returns the new array of filtered values.
+ */
+function baseDifference(array, values, iteratee, comparator) {
+  var index = -1,
+      includes = arrayIncludes,
+      isCommon = true,
+      length = array.length,
+      result = [],
+      valuesLength = values.length;
+
+  if (!length) {
+    return result;
+  }
+  if (iteratee) {
+    values = arrayMap(values, baseUnary(iteratee));
+  }
+  if (comparator) {
+    includes = arrayIncludesWith;
+    isCommon = false;
+  }
+  else if (values.length >= LARGE_ARRAY_SIZE) {
+    includes = cacheHas;
+    isCommon = false;
+    values = new SetCache(values);
+  }
+  outer:
+  while (++index < length) {
+    var value = array[index],
+        computed = iteratee == null ? value : iteratee(value);
+
+    value = (comparator || value !== 0) ? value : 0;
+    if (isCommon && computed === computed) {
+      var valuesIndex = valuesLength;
+      while (valuesIndex--) {
+        if (values[valuesIndex] === computed) {
+          continue outer;
+        }
+      }
+      result.push(value);
+    }
+    else if (!includes(values, computed, comparator)) {
+      result.push(value);
+    }
+  }
+  return result;
+}
+
+module.exports = baseDifference;
+
+
+/***/ }),
+
 /***/ 3236:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -12954,6 +13447,82 @@ var baseForOwn = __nccwpck_require__(5712),
 var baseEach = createBaseEach(baseForOwn);
 
 module.exports = baseEach;
+
+
+/***/ }),
+
+/***/ 7265:
+/***/ ((module) => {
+
+/**
+ * The base implementation of `_.findIndex` and `_.findLastIndex` without
+ * support for iteratee shorthands.
+ *
+ * @private
+ * @param {Array} array The array to inspect.
+ * @param {Function} predicate The function invoked per iteration.
+ * @param {number} fromIndex The index to search from.
+ * @param {boolean} [fromRight] Specify iterating from right to left.
+ * @returns {number} Returns the index of the matched value, else `-1`.
+ */
+function baseFindIndex(array, predicate, fromIndex, fromRight) {
+  var length = array.length,
+      index = fromIndex + (fromRight ? 1 : -1);
+
+  while ((fromRight ? index-- : ++index < length)) {
+    if (predicate(array[index], index, array)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+module.exports = baseFindIndex;
+
+
+/***/ }),
+
+/***/ 9588:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var arrayPush = __nccwpck_require__(82),
+    isFlattenable = __nccwpck_require__(9299);
+
+/**
+ * The base implementation of `_.flatten` with support for restricting flattening.
+ *
+ * @private
+ * @param {Array} array The array to flatten.
+ * @param {number} depth The maximum recursion depth.
+ * @param {boolean} [predicate=isFlattenable] The function invoked per iteration.
+ * @param {boolean} [isStrict] Restrict to values that pass `predicate` checks.
+ * @param {Array} [result=[]] The initial result value.
+ * @returns {Array} Returns the new flattened array.
+ */
+function baseFlatten(array, depth, predicate, isStrict, result) {
+  var index = -1,
+      length = array.length;
+
+  predicate || (predicate = isFlattenable);
+  result || (result = []);
+
+  while (++index < length) {
+    var value = array[index];
+    if (depth > 0 && predicate(value)) {
+      if (depth > 1) {
+        // Recursively flatten arrays (susceptible to call stack limits).
+        baseFlatten(value, depth - 1, predicate, isStrict, result);
+      } else {
+        arrayPush(result, value);
+      }
+    } else if (!isStrict) {
+      result[result.length] = value;
+    }
+  }
+  return result;
+}
+
+module.exports = baseFlatten;
 
 
 /***/ }),
@@ -13117,6 +13686,33 @@ module.exports = baseHasIn;
 
 /***/ }),
 
+/***/ 5425:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseFindIndex = __nccwpck_require__(7265),
+    baseIsNaN = __nccwpck_require__(8048),
+    strictIndexOf = __nccwpck_require__(8868);
+
+/**
+ * The base implementation of `_.indexOf` without `fromIndex` bounds checks.
+ *
+ * @private
+ * @param {Array} array The array to inspect.
+ * @param {*} value The value to search for.
+ * @param {number} fromIndex The index to search from.
+ * @returns {number} Returns the index of the matched value, else `-1`.
+ */
+function baseIndexOf(array, value, fromIndex) {
+  return value === value
+    ? strictIndexOf(array, value, fromIndex)
+    : baseFindIndex(array, baseIsNaN, fromIndex);
+}
+
+module.exports = baseIndexOf;
+
+
+/***/ }),
+
 /***/ 2177:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -13267,6 +13863,31 @@ module.exports = baseIsEqualDeep;
 
 /***/ }),
 
+/***/ 6372:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var getTag = __nccwpck_require__(941),
+    isObjectLike = __nccwpck_require__(5926);
+
+/** `Object#toString` result references. */
+var mapTag = '[object Map]';
+
+/**
+ * The base implementation of `_.isMap` without Node.js optimizations.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a map, else `false`.
+ */
+function baseIsMap(value) {
+  return isObjectLike(value) && getTag(value) == mapTag;
+}
+
+module.exports = baseIsMap;
+
+
+/***/ }),
+
 /***/ 9124:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -13336,6 +13957,25 @@ module.exports = baseIsMatch;
 
 /***/ }),
 
+/***/ 8048:
+/***/ ((module) => {
+
+/**
+ * The base implementation of `_.isNaN` without support for number objects.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is `NaN`, else `false`.
+ */
+function baseIsNaN(value) {
+  return value !== value;
+}
+
+module.exports = baseIsNaN;
+
+
+/***/ }),
+
 /***/ 411:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -13386,6 +14026,31 @@ function baseIsNative(value) {
 }
 
 module.exports = baseIsNative;
+
+
+/***/ }),
+
+/***/ 3688:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var getTag = __nccwpck_require__(941),
+    isObjectLike = __nccwpck_require__(5926);
+
+/** `Object#toString` result references. */
+var setTag = '[object Set]';
+
+/**
+ * The base implementation of `_.isSet` without Node.js optimizations.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a set, else `false`.
+ */
+function baseIsSet(value) {
+  return isObjectLike(value) && getTag(value) == setTag;
+}
+
+module.exports = baseIsSet;
 
 
 /***/ }),
@@ -13637,156 +14302,6 @@ function baseMatchesProperty(path, srcValue) {
 }
 
 module.exports = baseMatchesProperty;
-
-
-/***/ }),
-
-/***/ 5451:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var Stack = __nccwpck_require__(5323),
-    assignMergeValue = __nccwpck_require__(1950),
-    baseFor = __nccwpck_require__(6588),
-    baseMergeDeep = __nccwpck_require__(5254),
-    isObject = __nccwpck_require__(3334),
-    keysIn = __nccwpck_require__(9109),
-    safeGet = __nccwpck_require__(9020);
-
-/**
- * The base implementation of `_.merge` without support for multiple sources.
- *
- * @private
- * @param {Object} object The destination object.
- * @param {Object} source The source object.
- * @param {number} srcIndex The index of `source`.
- * @param {Function} [customizer] The function to customize merged values.
- * @param {Object} [stack] Tracks traversed source values and their merged
- *  counterparts.
- */
-function baseMerge(object, source, srcIndex, customizer, stack) {
-  if (object === source) {
-    return;
-  }
-  baseFor(source, function(srcValue, key) {
-    stack || (stack = new Stack);
-    if (isObject(srcValue)) {
-      baseMergeDeep(object, source, key, srcIndex, baseMerge, customizer, stack);
-    }
-    else {
-      var newValue = customizer
-        ? customizer(safeGet(object, key), srcValue, (key + ''), object, source, stack)
-        : undefined;
-
-      if (newValue === undefined) {
-        newValue = srcValue;
-      }
-      assignMergeValue(object, key, newValue);
-    }
-  }, keysIn);
-}
-
-module.exports = baseMerge;
-
-
-/***/ }),
-
-/***/ 5254:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var assignMergeValue = __nccwpck_require__(1950),
-    cloneBuffer = __nccwpck_require__(2974),
-    cloneTypedArray = __nccwpck_require__(7764),
-    copyArray = __nccwpck_require__(5157),
-    initCloneObject = __nccwpck_require__(1532),
-    isArguments = __nccwpck_require__(8495),
-    isArray = __nccwpck_require__(4869),
-    isArrayLikeObject = __nccwpck_require__(7996),
-    isBuffer = __nccwpck_require__(4190),
-    isFunction = __nccwpck_require__(7799),
-    isObject = __nccwpck_require__(3334),
-    isPlainObject = __nccwpck_require__(6169),
-    isTypedArray = __nccwpck_require__(2496),
-    safeGet = __nccwpck_require__(9020),
-    toPlainObject = __nccwpck_require__(9321);
-
-/**
- * A specialized version of `baseMerge` for arrays and objects which performs
- * deep merges and tracks traversed objects enabling objects with circular
- * references to be merged.
- *
- * @private
- * @param {Object} object The destination object.
- * @param {Object} source The source object.
- * @param {string} key The key of the value to merge.
- * @param {number} srcIndex The index of `source`.
- * @param {Function} mergeFunc The function to merge values.
- * @param {Function} [customizer] The function to customize assigned values.
- * @param {Object} [stack] Tracks traversed source values and their merged
- *  counterparts.
- */
-function baseMergeDeep(object, source, key, srcIndex, mergeFunc, customizer, stack) {
-  var objValue = safeGet(object, key),
-      srcValue = safeGet(source, key),
-      stacked = stack.get(srcValue);
-
-  if (stacked) {
-    assignMergeValue(object, key, stacked);
-    return;
-  }
-  var newValue = customizer
-    ? customizer(objValue, srcValue, (key + ''), object, source, stack)
-    : undefined;
-
-  var isCommon = newValue === undefined;
-
-  if (isCommon) {
-    var isArr = isArray(srcValue),
-        isBuff = !isArr && isBuffer(srcValue),
-        isTyped = !isArr && !isBuff && isTypedArray(srcValue);
-
-    newValue = srcValue;
-    if (isArr || isBuff || isTyped) {
-      if (isArray(objValue)) {
-        newValue = objValue;
-      }
-      else if (isArrayLikeObject(objValue)) {
-        newValue = copyArray(objValue);
-      }
-      else if (isBuff) {
-        isCommon = false;
-        newValue = cloneBuffer(srcValue, true);
-      }
-      else if (isTyped) {
-        isCommon = false;
-        newValue = cloneTypedArray(srcValue, true);
-      }
-      else {
-        newValue = [];
-      }
-    }
-    else if (isPlainObject(srcValue) || isArguments(srcValue)) {
-      newValue = objValue;
-      if (isArguments(objValue)) {
-        newValue = toPlainObject(objValue);
-      }
-      else if (!isObject(objValue) || isFunction(objValue)) {
-        newValue = initCloneObject(srcValue);
-      }
-    }
-    else {
-      isCommon = false;
-    }
-  }
-  if (isCommon) {
-    // Recursively merge objects and arrays (susceptible to call stack limits).
-    stack.set(srcValue, newValue);
-    mergeFunc(newValue, srcValue, srcIndex, customizer, stack);
-    stack['delete'](srcValue);
-  }
-  assignMergeValue(object, key, newValue);
-}
-
-module.exports = baseMergeDeep;
 
 
 /***/ }),
@@ -14158,6 +14673,78 @@ module.exports = cloneBuffer;
 
 /***/ }),
 
+/***/ 4524:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var cloneArrayBuffer = __nccwpck_require__(1094);
+
+/**
+ * Creates a clone of `dataView`.
+ *
+ * @private
+ * @param {Object} dataView The data view to clone.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Object} Returns the cloned data view.
+ */
+function cloneDataView(dataView, isDeep) {
+  var buffer = isDeep ? cloneArrayBuffer(dataView.buffer) : dataView.buffer;
+  return new dataView.constructor(buffer, dataView.byteOffset, dataView.byteLength);
+}
+
+module.exports = cloneDataView;
+
+
+/***/ }),
+
+/***/ 6497:
+/***/ ((module) => {
+
+/** Used to match `RegExp` flags from their coerced string values. */
+var reFlags = /\w*$/;
+
+/**
+ * Creates a clone of `regexp`.
+ *
+ * @private
+ * @param {Object} regexp The regexp to clone.
+ * @returns {Object} Returns the cloned regexp.
+ */
+function cloneRegExp(regexp) {
+  var result = new regexp.constructor(regexp.source, reFlags.exec(regexp));
+  result.lastIndex = regexp.lastIndex;
+  return result;
+}
+
+module.exports = cloneRegExp;
+
+
+/***/ }),
+
+/***/ 7192:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var Symbol = __nccwpck_require__(9213);
+
+/** Used to convert symbols to primitives and strings. */
+var symbolProto = Symbol ? Symbol.prototype : undefined,
+    symbolValueOf = symbolProto ? symbolProto.valueOf : undefined;
+
+/**
+ * Creates a clone of the `symbol` object.
+ *
+ * @private
+ * @param {Object} symbol The symbol object to clone.
+ * @returns {Object} Returns the cloned symbol object.
+ */
+function cloneSymbol(symbol) {
+  return symbolValueOf ? Object(symbolValueOf.call(symbol)) : {};
+}
+
+module.exports = cloneSymbol;
+
+
+/***/ }),
+
 /***/ 7764:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -14255,6 +14842,52 @@ module.exports = copyObject;
 
 /***/ }),
 
+/***/ 6631:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var copyObject = __nccwpck_require__(6388),
+    getSymbols = __nccwpck_require__(6802);
+
+/**
+ * Copies own symbols of `source` to `object`.
+ *
+ * @private
+ * @param {Object} source The object to copy symbols from.
+ * @param {Object} [object={}] The object to copy symbols to.
+ * @returns {Object} Returns `object`.
+ */
+function copySymbols(source, object) {
+  return copyObject(source, getSymbols(source), object);
+}
+
+module.exports = copySymbols;
+
+
+/***/ }),
+
+/***/ 1136:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var copyObject = __nccwpck_require__(6388),
+    getSymbolsIn = __nccwpck_require__(443);
+
+/**
+ * Copies own and inherited symbols of `source` to `object`.
+ *
+ * @private
+ * @param {Object} source The object to copy symbols from.
+ * @param {Object} [object={}] The object to copy symbols to.
+ * @returns {Object} Returns `object`.
+ */
+function copySymbolsIn(source, object) {
+  return copyObject(source, getSymbolsIn(source), object);
+}
+
+module.exports = copySymbolsIn;
+
+
+/***/ }),
+
 /***/ 8380:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -14272,7 +14905,7 @@ module.exports = coreJsData;
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var arrayAggregator = __nccwpck_require__(9173),
-    baseAggregator = __nccwpck_require__(4524),
+    baseAggregator = __nccwpck_require__(9692),
     baseIteratee = __nccwpck_require__(8777),
     isArray = __nccwpck_require__(4869);
 
@@ -14294,50 +14927,6 @@ function createAggregator(setter, initializer) {
 }
 
 module.exports = createAggregator;
-
-
-/***/ }),
-
-/***/ 1911:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseRest = __nccwpck_require__(5979),
-    isIterateeCall = __nccwpck_require__(8494);
-
-/**
- * Creates a function like `_.assign`.
- *
- * @private
- * @param {Function} assigner The function to assign values.
- * @returns {Function} Returns the new assigner function.
- */
-function createAssigner(assigner) {
-  return baseRest(function(object, sources) {
-    var index = -1,
-        length = sources.length,
-        customizer = length > 1 ? sources[length - 1] : undefined,
-        guard = length > 2 ? sources[2] : undefined;
-
-    customizer = (assigner.length > 3 && typeof customizer == 'function')
-      ? (length--, customizer)
-      : undefined;
-
-    if (guard && isIterateeCall(sources[0], sources[1], guard)) {
-      customizer = length < 3 ? undefined : customizer;
-      length = 1;
-    }
-    object = Object(object);
-    while (++index < length) {
-      var source = sources[index];
-      if (source) {
-        assigner(object, source, index, customizer);
-      }
-    }
-    return object;
-  });
-}
-
-module.exports = createAssigner;
 
 
 /***/ }),
@@ -14772,6 +15361,30 @@ module.exports = getAllKeys;
 
 /***/ }),
 
+/***/ 4291:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseGetAllKeys = __nccwpck_require__(5951),
+    getSymbolsIn = __nccwpck_require__(443),
+    keysIn = __nccwpck_require__(9109);
+
+/**
+ * Creates an array of own and inherited enumerable property names and
+ * symbols of `object`.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names and symbols.
+ */
+function getAllKeysIn(object) {
+  return baseGetAllKeys(object, keysIn, getSymbolsIn);
+}
+
+module.exports = getAllKeysIn;
+
+
+/***/ }),
+
 /***/ 9980:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -14951,6 +15564,38 @@ var getSymbols = !nativeGetSymbols ? stubArray : function(object) {
 };
 
 module.exports = getSymbols;
+
+
+/***/ }),
+
+/***/ 443:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var arrayPush = __nccwpck_require__(82),
+    getPrototype = __nccwpck_require__(6271),
+    getSymbols = __nccwpck_require__(6802),
+    stubArray = __nccwpck_require__(8634);
+
+/* Built-in method references for those with the same name as other `lodash` methods. */
+var nativeGetSymbols = Object.getOwnPropertySymbols;
+
+/**
+ * Creates an array of the own and inherited enumerable symbols of `object`.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of symbols.
+ */
+var getSymbolsIn = !nativeGetSymbols ? stubArray : function(object) {
+  var result = [];
+  while (object) {
+    arrayPush(result, getSymbols(object));
+    object = getPrototype(object);
+  }
+  return result;
+};
+
+module.exports = getSymbolsIn;
 
 
 /***/ }),
@@ -15229,6 +15874,123 @@ module.exports = hashSet;
 
 /***/ }),
 
+/***/ 9763:
+/***/ ((module) => {
+
+/** Used for built-in method references. */
+var objectProto = Object.prototype;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/**
+ * Initializes an array clone.
+ *
+ * @private
+ * @param {Array} array The array to clone.
+ * @returns {Array} Returns the initialized clone.
+ */
+function initCloneArray(array) {
+  var length = array.length,
+      result = new array.constructor(length);
+
+  // Add properties assigned by `RegExp#exec`.
+  if (length && typeof array[0] == 'string' && hasOwnProperty.call(array, 'index')) {
+    result.index = array.index;
+    result.input = array.input;
+  }
+  return result;
+}
+
+module.exports = initCloneArray;
+
+
+/***/ }),
+
+/***/ 6501:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var cloneArrayBuffer = __nccwpck_require__(1094),
+    cloneDataView = __nccwpck_require__(4524),
+    cloneRegExp = __nccwpck_require__(6497),
+    cloneSymbol = __nccwpck_require__(7192),
+    cloneTypedArray = __nccwpck_require__(7764);
+
+/** `Object#toString` result references. */
+var boolTag = '[object Boolean]',
+    dateTag = '[object Date]',
+    mapTag = '[object Map]',
+    numberTag = '[object Number]',
+    regexpTag = '[object RegExp]',
+    setTag = '[object Set]',
+    stringTag = '[object String]',
+    symbolTag = '[object Symbol]';
+
+var arrayBufferTag = '[object ArrayBuffer]',
+    dataViewTag = '[object DataView]',
+    float32Tag = '[object Float32Array]',
+    float64Tag = '[object Float64Array]',
+    int8Tag = '[object Int8Array]',
+    int16Tag = '[object Int16Array]',
+    int32Tag = '[object Int32Array]',
+    uint8Tag = '[object Uint8Array]',
+    uint8ClampedTag = '[object Uint8ClampedArray]',
+    uint16Tag = '[object Uint16Array]',
+    uint32Tag = '[object Uint32Array]';
+
+/**
+ * Initializes an object clone based on its `toStringTag`.
+ *
+ * **Note:** This function only supports cloning values with tags of
+ * `Boolean`, `Date`, `Error`, `Map`, `Number`, `RegExp`, `Set`, or `String`.
+ *
+ * @private
+ * @param {Object} object The object to clone.
+ * @param {string} tag The `toStringTag` of the object to clone.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Object} Returns the initialized clone.
+ */
+function initCloneByTag(object, tag, isDeep) {
+  var Ctor = object.constructor;
+  switch (tag) {
+    case arrayBufferTag:
+      return cloneArrayBuffer(object);
+
+    case boolTag:
+    case dateTag:
+      return new Ctor(+object);
+
+    case dataViewTag:
+      return cloneDataView(object, isDeep);
+
+    case float32Tag: case float64Tag:
+    case int8Tag: case int16Tag: case int32Tag:
+    case uint8Tag: case uint8ClampedTag: case uint16Tag: case uint32Tag:
+      return cloneTypedArray(object, isDeep);
+
+    case mapTag:
+      return new Ctor;
+
+    case numberTag:
+    case stringTag:
+      return new Ctor(object);
+
+    case regexpTag:
+      return cloneRegExp(object);
+
+    case setTag:
+      return new Ctor;
+
+    case symbolTag:
+      return cloneSymbol(object);
+  }
+}
+
+module.exports = initCloneByTag;
+
+
+/***/ }),
+
 /***/ 1532:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -15250,6 +16012,33 @@ function initCloneObject(object) {
 }
 
 module.exports = initCloneObject;
+
+
+/***/ }),
+
+/***/ 9299:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var Symbol = __nccwpck_require__(9213),
+    isArguments = __nccwpck_require__(8495),
+    isArray = __nccwpck_require__(4869);
+
+/** Built-in value references. */
+var spreadableSymbol = Symbol ? Symbol.isConcatSpreadable : undefined;
+
+/**
+ * Checks if `value` is a flattenable `arguments` object or array.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is flattenable, else `false`.
+ */
+function isFlattenable(value) {
+  return isArray(value) || isArguments(value) ||
+    !!(spreadableSymbol && value && value[spreadableSymbol]);
+}
+
+module.exports = isFlattenable;
 
 
 /***/ }),
@@ -16013,34 +16802,6 @@ module.exports = root;
 
 /***/ }),
 
-/***/ 9020:
-/***/ ((module) => {
-
-/**
- * Gets the value at `key`, unless `key` is "__proto__" or "constructor".
- *
- * @private
- * @param {Object} object The object to query.
- * @param {string} key The key of the property to get.
- * @returns {*} Returns the property value.
- */
-function safeGet(object, key) {
-  if (key === 'constructor' && typeof object[key] === 'function') {
-    return;
-  }
-
-  if (key == '__proto__') {
-    return;
-  }
-
-  return object[key];
-}
-
-module.exports = safeGet;
-
-
-/***/ }),
-
 /***/ 6895:
 /***/ ((module) => {
 
@@ -16308,6 +17069,36 @@ module.exports = stackSet;
 
 /***/ }),
 
+/***/ 8868:
+/***/ ((module) => {
+
+/**
+ * A specialized version of `_.indexOf` which performs strict equality
+ * comparisons of values, i.e. `===`.
+ *
+ * @private
+ * @param {Array} array The array to inspect.
+ * @param {*} value The value to search for.
+ * @param {number} fromIndex The index to search from.
+ * @returns {number} Returns the index of the matched value, else `-1`.
+ */
+function strictIndexOf(array, value, fromIndex) {
+  var index = fromIndex - 1,
+      length = array.length;
+
+  while (++index < length) {
+    if (array[index] === value) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+module.exports = strictIndexOf;
+
+
+/***/ }),
+
 /***/ 1853:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -16486,6 +17277,49 @@ module.exports = chunk;
 
 /***/ }),
 
+/***/ 7498:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseClone = __nccwpck_require__(3040);
+
+/** Used to compose bitmasks for cloning. */
+var CLONE_SYMBOLS_FLAG = 4;
+
+/**
+ * Creates a shallow clone of `value`.
+ *
+ * **Note:** This method is loosely based on the
+ * [structured clone algorithm](https://mdn.io/Structured_clone_algorithm)
+ * and supports cloning arrays, array buffers, booleans, date objects, maps,
+ * numbers, `Object` objects, regexes, sets, strings, symbols, and typed
+ * arrays. The own enumerable properties of `arguments` objects are cloned
+ * as plain objects. An empty object is returned for uncloneable values such
+ * as error objects, functions, DOM nodes, and WeakMaps.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Lang
+ * @param {*} value The value to clone.
+ * @returns {*} Returns the cloned value.
+ * @see _.cloneDeep
+ * @example
+ *
+ * var objects = [{ 'a': 1 }, { 'b': 2 }];
+ *
+ * var shallow = _.clone(objects);
+ * console.log(shallow[0] === objects[0]);
+ * // => true
+ */
+function clone(value) {
+  return baseClone(value, CLONE_SYMBOLS_FLAG);
+}
+
+module.exports = clone;
+
+
+/***/ }),
+
 /***/ 5946:
 /***/ ((module) => {
 
@@ -16515,6 +17349,46 @@ function constant(value) {
 }
 
 module.exports = constant;
+
+
+/***/ }),
+
+/***/ 4031:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseDifference = __nccwpck_require__(1259),
+    baseFlatten = __nccwpck_require__(9588),
+    baseRest = __nccwpck_require__(5979),
+    isArrayLikeObject = __nccwpck_require__(7996);
+
+/**
+ * Creates an array of `array` values not included in the other given arrays
+ * using [`SameValueZero`](http://ecma-international.org/ecma-262/7.0/#sec-samevaluezero)
+ * for equality comparisons. The order and references of result values are
+ * determined by the first array.
+ *
+ * **Note:** Unlike `_.pullAll`, this method returns a new array.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Array
+ * @param {Array} array The array to inspect.
+ * @param {...Array} [values] The values to exclude.
+ * @returns {Array} Returns the new array of filtered values.
+ * @see _.without, _.xor
+ * @example
+ *
+ * _.difference([2, 1], [2, 3]);
+ * // => [1]
+ */
+var difference = baseRest(function(array, values) {
+  return isArrayLikeObject(array)
+    ? baseDifference(array, baseFlatten(values, 1, isArrayLikeObject, true))
+    : [];
+});
+
+module.exports = difference;
 
 
 /***/ }),
@@ -17002,6 +17876,40 @@ module.exports = isLength;
 
 /***/ }),
 
+/***/ 9718:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var baseIsMap = __nccwpck_require__(6372),
+    baseUnary = __nccwpck_require__(9258),
+    nodeUtil = __nccwpck_require__(4643);
+
+/* Node.js helper references. */
+var nodeIsMap = nodeUtil && nodeUtil.isMap;
+
+/**
+ * Checks if `value` is classified as a `Map` object.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.3.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a map, else `false`.
+ * @example
+ *
+ * _.isMap(new Map);
+ * // => true
+ *
+ * _.isMap(new WeakMap);
+ * // => false
+ */
+var isMap = nodeIsMap ? baseUnary(nodeIsMap) : baseIsMap;
+
+module.exports = isMap;
+
+
+/***/ }),
+
 /***/ 4977:
 /***/ ((module) => {
 
@@ -17108,71 +18016,36 @@ module.exports = isObjectLike;
 
 /***/ }),
 
-/***/ 6169:
+/***/ 8371:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
-var baseGetTag = __nccwpck_require__(7497),
-    getPrototype = __nccwpck_require__(6271),
-    isObjectLike = __nccwpck_require__(5926);
+var baseIsSet = __nccwpck_require__(3688),
+    baseUnary = __nccwpck_require__(9258),
+    nodeUtil = __nccwpck_require__(4643);
 
-/** `Object#toString` result references. */
-var objectTag = '[object Object]';
-
-/** Used for built-in method references. */
-var funcProto = Function.prototype,
-    objectProto = Object.prototype;
-
-/** Used to resolve the decompiled source of functions. */
-var funcToString = funcProto.toString;
-
-/** Used to check objects for own properties. */
-var hasOwnProperty = objectProto.hasOwnProperty;
-
-/** Used to infer the `Object` constructor. */
-var objectCtorString = funcToString.call(Object);
+/* Node.js helper references. */
+var nodeIsSet = nodeUtil && nodeUtil.isSet;
 
 /**
- * Checks if `value` is a plain object, that is, an object created by the
- * `Object` constructor or one with a `[[Prototype]]` of `null`.
+ * Checks if `value` is classified as a `Set` object.
  *
  * @static
  * @memberOf _
- * @since 0.8.0
+ * @since 4.3.0
  * @category Lang
  * @param {*} value The value to check.
- * @returns {boolean} Returns `true` if `value` is a plain object, else `false`.
+ * @returns {boolean} Returns `true` if `value` is a set, else `false`.
  * @example
  *
- * function Foo() {
- *   this.a = 1;
- * }
- *
- * _.isPlainObject(new Foo);
- * // => false
- *
- * _.isPlainObject([1, 2, 3]);
- * // => false
- *
- * _.isPlainObject({ 'x': 0, 'y': 0 });
+ * _.isSet(new Set);
  * // => true
  *
- * _.isPlainObject(Object.create(null));
- * // => true
+ * _.isSet(new WeakSet);
+ * // => false
  */
-function isPlainObject(value) {
-  if (!isObjectLike(value) || baseGetTag(value) != objectTag) {
-    return false;
-  }
-  var proto = getPrototype(value);
-  if (proto === null) {
-    return true;
-  }
-  var Ctor = hasOwnProperty.call(proto, 'constructor') && proto.constructor;
-  return typeof Ctor == 'function' && Ctor instanceof Ctor &&
-    funcToString.call(Ctor) == objectCtorString;
-}
+var isSet = nodeIsSet ? baseUnary(nodeIsSet) : baseIsSet;
 
-module.exports = isPlainObject;
+module.exports = isSet;
 
 
 /***/ }),
@@ -17453,52 +18326,6 @@ module.exports = memoize;
 
 /***/ }),
 
-/***/ 481:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var baseMerge = __nccwpck_require__(5451),
-    createAssigner = __nccwpck_require__(1911);
-
-/**
- * This method is like `_.assign` except that it recursively merges own and
- * inherited enumerable string keyed properties of source objects into the
- * destination object. Source properties that resolve to `undefined` are
- * skipped if a destination value exists. Array and plain object properties
- * are merged recursively. Other objects and value types are overridden by
- * assignment. Source objects are applied from left to right. Subsequent
- * sources overwrite property assignments of previous sources.
- *
- * **Note:** This method mutates `object`.
- *
- * @static
- * @memberOf _
- * @since 0.5.0
- * @category Object
- * @param {Object} object The destination object.
- * @param {...Object} [sources] The source objects.
- * @returns {Object} Returns `object`.
- * @example
- *
- * var object = {
- *   'a': [{ 'b': 2 }, { 'd': 4 }]
- * };
- *
- * var other = {
- *   'a': [{ 'c': 3 }, { 'e': 5 }]
- * };
- *
- * _.merge(object, other);
- * // => { 'a': [{ 'b': 2, 'c': 3 }, { 'd': 4, 'e': 5 }] }
- */
-var merge = createAssigner(function(object, source, srcIndex) {
-  baseMerge(object, source, srcIndex);
-});
-
-module.exports = merge;
-
-
-/***/ }),
-
 /***/ 7261:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -17685,6 +18512,41 @@ module.exports = toInteger;
 
 /***/ }),
 
+/***/ 7447:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var toString = __nccwpck_require__(2931);
+
+/**
+ * Converts `string`, as a whole, to lower case just like
+ * [String#toLowerCase](https://mdn.io/toLowerCase).
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category String
+ * @param {string} [string=''] The string to convert.
+ * @returns {string} Returns the lower cased string.
+ * @example
+ *
+ * _.toLower('--Foo-Bar--');
+ * // => '--foo-bar--'
+ *
+ * _.toLower('fooBar');
+ * // => 'foobar'
+ *
+ * _.toLower('__FOO_BAR__');
+ * // => '__foo_bar__'
+ */
+function toLower(value) {
+  return toString(value).toLowerCase();
+}
+
+module.exports = toLower;
+
+
+/***/ }),
+
 /***/ 1235:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -17756,45 +18618,6 @@ module.exports = toNumber;
 
 /***/ }),
 
-/***/ 9321:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var copyObject = __nccwpck_require__(6388),
-    keysIn = __nccwpck_require__(9109);
-
-/**
- * Converts `value` to a plain object flattening inherited enumerable string
- * keyed properties of `value` to own properties of the plain object.
- *
- * @static
- * @memberOf _
- * @since 3.0.0
- * @category Lang
- * @param {*} value The value to convert.
- * @returns {Object} Returns the converted plain object.
- * @example
- *
- * function Foo() {
- *   this.b = 2;
- * }
- *
- * Foo.prototype.c = 3;
- *
- * _.assign({ 'a': 1 }, new Foo);
- * // => { 'a': 1, 'b': 2 }
- *
- * _.assign({ 'a': 1 }, _.toPlainObject(new Foo));
- * // => { 'a': 1, 'b': 2, 'c': 3 }
- */
-function toPlainObject(value) {
-  return copyObject(value, keysIn(value));
-}
-
-module.exports = toPlainObject;
-
-
-/***/ }),
-
 /***/ 2931:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -17827,6 +18650,106 @@ function toString(value) {
 
 module.exports = toString;
 
+
+/***/ }),
+
+/***/ 8387:
+/***/ ((__unused_webpack_module, exports) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.lowerCase = exports.localeLowerCase = void 0;
+/**
+ * Source: ftp://ftp.unicode.org/Public/UCD/latest/ucd/SpecialCasing.txt
+ */
+var SUPPORTED_LOCALE = {
+    tr: {
+        regexp: /\u0130|\u0049|\u0049\u0307/g,
+        map: {
+            İ: "\u0069",
+            I: "\u0131",
+            İ: "\u0069",
+        },
+    },
+    az: {
+        regexp: /\u0130/g,
+        map: {
+            İ: "\u0069",
+            I: "\u0131",
+            İ: "\u0069",
+        },
+    },
+    lt: {
+        regexp: /\u0049|\u004A|\u012E|\u00CC|\u00CD|\u0128/g,
+        map: {
+            I: "\u0069\u0307",
+            J: "\u006A\u0307",
+            Į: "\u012F\u0307",
+            Ì: "\u0069\u0307\u0300",
+            Í: "\u0069\u0307\u0301",
+            Ĩ: "\u0069\u0307\u0303",
+        },
+    },
+};
+/**
+ * Localized lower case.
+ */
+function localeLowerCase(str, locale) {
+    var lang = SUPPORTED_LOCALE[locale.toLowerCase()];
+    if (lang)
+        return lowerCase(str.replace(lang.regexp, function (m) { return lang.map[m]; }));
+    return lowerCase(str);
+}
+exports.localeLowerCase = localeLowerCase;
+/**
+ * Lower case as a function.
+ */
+function lowerCase(str) {
+    return str.toLowerCase();
+}
+exports.lowerCase = lowerCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 397:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.noCase = void 0;
+var lower_case_1 = __nccwpck_require__(8387);
+// Support camel case ("camelCase" -> "camel Case" and "CAMELCase" -> "CAMEL Case").
+var DEFAULT_SPLIT_REGEXP = [/([a-z0-9])([A-Z])/g, /([A-Z])([A-Z][a-z])/g];
+// Remove all non-word characters.
+var DEFAULT_STRIP_REGEXP = /[^A-Z0-9]+/gi;
+/**
+ * Normalize the string into something other libraries can manipulate easier.
+ */
+function noCase(input, options) {
+    if (options === void 0) { options = {}; }
+    var _a = options.splitRegexp, splitRegexp = _a === void 0 ? DEFAULT_SPLIT_REGEXP : _a, _b = options.stripRegexp, stripRegexp = _b === void 0 ? DEFAULT_STRIP_REGEXP : _b, _c = options.transform, transform = _c === void 0 ? lower_case_1.lowerCase : _c, _d = options.delimiter, delimiter = _d === void 0 ? " " : _d;
+    var result = replace(replace(input, splitRegexp, "$1\0$2"), stripRegexp, "\0");
+    var start = 0;
+    var end = result.length;
+    // Trim the delimiter from around the output string.
+    while (result.charAt(start) === "\0")
+        start++;
+    while (result.charAt(end - 1) === "\0")
+        end--;
+    // Transform each token independently.
+    return result.slice(start, end).split("\0").map(transform).join(delimiter);
+}
+exports.noCase = noCase;
+/**
+ * Replace `re` in the input string with the replacement value.
+ */
+function replace(input, re, value) {
+    if (re instanceof RegExp)
+        return input.replace(re, value);
+    return re.reduce(function (input, re) { return input.replace(re, value); }, input);
+}
+//# sourceMappingURL=index.js.map
 
 /***/ }),
 
@@ -19534,6 +20457,112 @@ exports.FetchError = FetchError;
 
 /***/ }),
 
+/***/ 8452:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.paramCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var dot_case_1 = __nccwpck_require__(2246);
+function paramCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return dot_case_1.dotCase(input, tslib_1.__assign({ delimiter: "-" }, options));
+}
+exports.paramCase = paramCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 5995:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.pascalCase = exports.pascalCaseTransformMerge = exports.pascalCaseTransform = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+function pascalCaseTransform(input, index) {
+    var firstChar = input.charAt(0);
+    var lowerChars = input.substr(1).toLowerCase();
+    if (index > 0 && firstChar >= "0" && firstChar <= "9") {
+        return "_" + firstChar + lowerChars;
+    }
+    return "" + firstChar.toUpperCase() + lowerChars;
+}
+exports.pascalCaseTransform = pascalCaseTransform;
+function pascalCaseTransformMerge(input) {
+    return input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
+}
+exports.pascalCaseTransformMerge = pascalCaseTransformMerge;
+function pascalCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: "", transform: pascalCaseTransform }, options));
+}
+exports.pascalCase = pascalCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 3553:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.pathCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var dot_case_1 = __nccwpck_require__(2246);
+function pathCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return dot_case_1.dotCase(input, tslib_1.__assign({ delimiter: "/" }, options));
+}
+exports.pathCase = pathCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 9229:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.sentenceCase = exports.sentenceCaseTransform = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var no_case_1 = __nccwpck_require__(397);
+var upper_case_first_1 = __nccwpck_require__(6256);
+function sentenceCaseTransform(input, index) {
+    var result = input.toLowerCase();
+    if (index === 0)
+        return upper_case_first_1.upperCaseFirst(result);
+    return result;
+}
+exports.sentenceCaseTransform = sentenceCaseTransform;
+function sentenceCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return no_case_1.noCase(input, tslib_1.__assign({ delimiter: " ", transform: sentenceCaseTransform }, options));
+}
+exports.sentenceCase = sentenceCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 6213:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.snakeCase = void 0;
+var tslib_1 = __nccwpck_require__(4351);
+var dot_case_1 = __nccwpck_require__(2246);
+function snakeCase(input, options) {
+    if (options === void 0) { options = {}; }
+    return dot_case_1.dotCase(input, tslib_1.__assign({ delimiter: "_" }, options));
+}
+exports.snakeCase = snakeCase;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
 /***/ 3988:
 /***/ ((__unused_webpack_module, exports) => {
 
@@ -20087,6 +21116,330 @@ module.exports.PROCESSING_OPTIONS = PROCESSING_OPTIONS;
 
 /***/ }),
 
+/***/ 4351:
+/***/ ((module) => {
+
+/******************************************************************************
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+***************************************************************************** */
+/* global global, define, System, Reflect, Promise */
+var __extends;
+var __assign;
+var __rest;
+var __decorate;
+var __param;
+var __metadata;
+var __awaiter;
+var __generator;
+var __exportStar;
+var __values;
+var __read;
+var __spread;
+var __spreadArrays;
+var __spreadArray;
+var __await;
+var __asyncGenerator;
+var __asyncDelegator;
+var __asyncValues;
+var __makeTemplateObject;
+var __importStar;
+var __importDefault;
+var __classPrivateFieldGet;
+var __classPrivateFieldSet;
+var __classPrivateFieldIn;
+var __createBinding;
+(function (factory) {
+    var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
+    if (typeof define === "function" && define.amd) {
+        define("tslib", ["exports"], function (exports) { factory(createExporter(root, createExporter(exports))); });
+    }
+    else if ( true && typeof module.exports === "object") {
+        factory(createExporter(root, createExporter(module.exports)));
+    }
+    else {
+        factory(createExporter(root));
+    }
+    function createExporter(exports, previous) {
+        if (exports !== root) {
+            if (typeof Object.create === "function") {
+                Object.defineProperty(exports, "__esModule", { value: true });
+            }
+            else {
+                exports.__esModule = true;
+            }
+        }
+        return function (id, v) { return exports[id] = previous ? previous(id, v) : v; };
+    }
+})
+(function (exporter) {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+
+    __extends = function (d, b) {
+        if (typeof b !== "function" && b !== null)
+            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+
+    __assign = Object.assign || function (t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
+        }
+        return t;
+    };
+
+    __rest = function (s, e) {
+        var t = {};
+        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+            t[p] = s[p];
+        if (s != null && typeof Object.getOwnPropertySymbols === "function")
+            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+                if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                    t[p[i]] = s[p[i]];
+            }
+        return t;
+    };
+
+    __decorate = function (decorators, target, key, desc) {
+        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+        else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+        return c > 3 && r && Object.defineProperty(target, key, r), r;
+    };
+
+    __param = function (paramIndex, decorator) {
+        return function (target, key) { decorator(target, key, paramIndex); }
+    };
+
+    __metadata = function (metadataKey, metadataValue) {
+        if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(metadataKey, metadataValue);
+    };
+
+    __awaiter = function (thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+        return new (P || (P = Promise))(function (resolve, reject) {
+            function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+            function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+            step((generator = generator.apply(thisArg, _arguments || [])).next());
+        });
+    };
+
+    __generator = function (thisArg, body) {
+        var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+        return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+        function verb(n) { return function (v) { return step([n, v]); }; }
+        function step(op) {
+            if (f) throw new TypeError("Generator is already executing.");
+            while (g && (g = 0, op[0] && (_ = 0)), _) try {
+                if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+                if (y = 0, t) op = [op[0] & 2, t.value];
+                switch (op[0]) {
+                    case 0: case 1: t = op; break;
+                    case 4: _.label++; return { value: op[1], done: false };
+                    case 5: _.label++; y = op[1]; op = [0]; continue;
+                    case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                    default:
+                        if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                        if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                        if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                        if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                        if (t[2]) _.ops.pop();
+                        _.trys.pop(); continue;
+                }
+                op = body.call(thisArg, _);
+            } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+            if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+        }
+    };
+
+    __exportStar = function(m, o) {
+        for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(o, p)) __createBinding(o, m, p);
+    };
+
+    __createBinding = Object.create ? (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+            desc = { enumerable: true, get: function() { return m[k]; } };
+        }
+        Object.defineProperty(o, k2, desc);
+    }) : (function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        o[k2] = m[k];
+    });
+
+    __values = function (o) {
+        var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+        if (m) return m.call(o);
+        if (o && typeof o.length === "number") return {
+            next: function () {
+                if (o && i >= o.length) o = void 0;
+                return { value: o && o[i++], done: !o };
+            }
+        };
+        throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+    };
+
+    __read = function (o, n) {
+        var m = typeof Symbol === "function" && o[Symbol.iterator];
+        if (!m) return o;
+        var i = m.call(o), r, ar = [], e;
+        try {
+            while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
+        }
+        catch (error) { e = { error: error }; }
+        finally {
+            try {
+                if (r && !r.done && (m = i["return"])) m.call(i);
+            }
+            finally { if (e) throw e.error; }
+        }
+        return ar;
+    };
+
+    /** @deprecated */
+    __spread = function () {
+        for (var ar = [], i = 0; i < arguments.length; i++)
+            ar = ar.concat(__read(arguments[i]));
+        return ar;
+    };
+
+    /** @deprecated */
+    __spreadArrays = function () {
+        for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
+        for (var r = Array(s), k = 0, i = 0; i < il; i++)
+            for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
+                r[k] = a[j];
+        return r;
+    };
+
+    __spreadArray = function (to, from, pack) {
+        if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+            if (ar || !(i in from)) {
+                if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+                ar[i] = from[i];
+            }
+        }
+        return to.concat(ar || Array.prototype.slice.call(from));
+    };
+
+    __await = function (v) {
+        return this instanceof __await ? (this.v = v, this) : new __await(v);
+    };
+
+    __asyncGenerator = function (thisArg, _arguments, generator) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var g = generator.apply(thisArg, _arguments || []), i, q = [];
+        return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
+        function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
+        function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
+        function step(r) { r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r);  }
+        function fulfill(value) { resume("next", value); }
+        function reject(value) { resume("throw", value); }
+        function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
+    };
+
+    __asyncDelegator = function (o) {
+        var i, p;
+        return i = {}, verb("next"), verb("throw", function (e) { throw e; }), verb("return"), i[Symbol.iterator] = function () { return this; }, i;
+        function verb(n, f) { i[n] = o[n] ? function (v) { return (p = !p) ? { value: __await(o[n](v)), done: n === "return" } : f ? f(v) : v; } : f; }
+    };
+
+    __asyncValues = function (o) {
+        if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+        var m = o[Symbol.asyncIterator], i;
+        return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+        function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+        function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+    };
+
+    __makeTemplateObject = function (cooked, raw) {
+        if (Object.defineProperty) { Object.defineProperty(cooked, "raw", { value: raw }); } else { cooked.raw = raw; }
+        return cooked;
+    };
+
+    var __setModuleDefault = Object.create ? (function(o, v) {
+        Object.defineProperty(o, "default", { enumerable: true, value: v });
+    }) : function(o, v) {
+        o["default"] = v;
+    };
+
+    __importStar = function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+
+    __importDefault = function (mod) {
+        return (mod && mod.__esModule) ? mod : { "default": mod };
+    };
+
+    __classPrivateFieldGet = function (receiver, state, kind, f) {
+        if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
+        if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
+        return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+    };
+
+    __classPrivateFieldSet = function (receiver, state, value, kind, f) {
+        if (kind === "m") throw new TypeError("Private method is not writable");
+        if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+        if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+        return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+    };
+
+    __classPrivateFieldIn = function (state, receiver) {
+        if (receiver === null || (typeof receiver !== "object" && typeof receiver !== "function")) throw new TypeError("Cannot use 'in' operator on non-object");
+        return typeof state === "function" ? receiver === state : state.has(receiver);
+    };
+
+    exporter("__extends", __extends);
+    exporter("__assign", __assign);
+    exporter("__rest", __rest);
+    exporter("__decorate", __decorate);
+    exporter("__param", __param);
+    exporter("__metadata", __metadata);
+    exporter("__awaiter", __awaiter);
+    exporter("__generator", __generator);
+    exporter("__exportStar", __exportStar);
+    exporter("__createBinding", __createBinding);
+    exporter("__values", __values);
+    exporter("__read", __read);
+    exporter("__spread", __spread);
+    exporter("__spreadArrays", __spreadArrays);
+    exporter("__spreadArray", __spreadArray);
+    exporter("__await", __await);
+    exporter("__asyncGenerator", __asyncGenerator);
+    exporter("__asyncDelegator", __asyncDelegator);
+    exporter("__asyncValues", __asyncValues);
+    exporter("__makeTemplateObject", __makeTemplateObject);
+    exporter("__importStar", __importStar);
+    exporter("__importDefault", __importDefault);
+    exporter("__classPrivateFieldGet", __classPrivateFieldGet);
+    exporter("__classPrivateFieldSet", __classPrivateFieldSet);
+    exporter("__classPrivateFieldIn", __classPrivateFieldIn);
+});
+
+
+/***/ }),
+
 /***/ 4294:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -20394,6 +21747,78 @@ exports.fromPromise = function (fn) {
   }, 'name', { value: fn.name })
 }
 
+
+/***/ }),
+
+/***/ 6256:
+/***/ ((__unused_webpack_module, exports) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.upperCaseFirst = void 0;
+/**
+ * Upper case the first character of an input string.
+ */
+function upperCaseFirst(input) {
+    return input.charAt(0).toUpperCase() + input.substr(1);
+}
+exports.upperCaseFirst = upperCaseFirst;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 5997:
+/***/ ((__unused_webpack_module, exports) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.upperCase = exports.localeUpperCase = void 0;
+/**
+ * Source: ftp://ftp.unicode.org/Public/UCD/latest/ucd/SpecialCasing.txt
+ */
+var SUPPORTED_LOCALE = {
+    tr: {
+        regexp: /[\u0069]/g,
+        map: {
+            i: "\u0130",
+        },
+    },
+    az: {
+        regexp: /[\u0069]/g,
+        map: {
+            i: "\u0130",
+        },
+    },
+    lt: {
+        regexp: /[\u0069\u006A\u012F]\u0307|\u0069\u0307[\u0300\u0301\u0303]/g,
+        map: {
+            i̇: "\u0049",
+            j̇: "\u004A",
+            į̇: "\u012E",
+            i̇̀: "\u00CC",
+            i̇́: "\u00CD",
+            i̇̃: "\u0128",
+        },
+    },
+};
+/**
+ * Localized upper case.
+ */
+function localeUpperCase(str, locale) {
+    var lang = SUPPORTED_LOCALE[locale.toLowerCase()];
+    if (lang)
+        return upperCase(str.replace(lang.regexp, function (m) { return lang.map[m]; }));
+    return upperCase(str);
+}
+exports.localeUpperCase = localeUpperCase;
+/**
+ * Upper case as a function.
+ */
+function upperCase(str) {
+    return str.toUpperCase();
+}
+exports.upperCase = upperCase;
+//# sourceMappingURL=index.js.map
 
 /***/ }),
 
@@ -39489,6 +40914,9 @@ module.exports = JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45,46],"valid"]
 /******/ 	return module.exports;
 /******/ }
 /******/ 
+/******/ // expose the modules object (__webpack_modules__)
+/******/ __nccwpck_require__.m = __webpack_modules__;
+/******/ 
 /************************************************************************/
 /******/ /* webpack/runtime/define property getters */
 /******/ (() => {
@@ -39502,9 +40930,42 @@ module.exports = JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45,46],"valid"]
 /******/ 	};
 /******/ })();
 /******/ 
+/******/ /* webpack/runtime/ensure chunk */
+/******/ (() => {
+/******/ 	__nccwpck_require__.f = {};
+/******/ 	// This file contains only the entry chunk.
+/******/ 	// The chunk loading function for additional chunks
+/******/ 	__nccwpck_require__.e = (chunkId) => {
+/******/ 		return Promise.all(Object.keys(__nccwpck_require__.f).reduce((promises, key) => {
+/******/ 			__nccwpck_require__.f[key](chunkId, promises);
+/******/ 			return promises;
+/******/ 		}, []));
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/get javascript chunk filename */
+/******/ (() => {
+/******/ 	// This function allow to reference async chunks
+/******/ 	__nccwpck_require__.u = (chunkId) => {
+/******/ 		// return url for filenames based on template
+/******/ 		return "" + chunkId + ".index.js";
+/******/ 	};
+/******/ })();
+/******/ 
 /******/ /* webpack/runtime/hasOwnProperty shorthand */
 /******/ (() => {
 /******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/make namespace object */
+/******/ (() => {
+/******/ 	// define __esModule on exports
+/******/ 	__nccwpck_require__.r = (exports) => {
+/******/ 		if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 			Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 		}
+/******/ 		Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 	};
 /******/ })();
 /******/ 
 /******/ /* webpack/runtime/node module decorator */
@@ -39520,6 +40981,65 @@ module.exports = JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45,46],"valid"]
 /******/ 
 /******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = new URL('.', import.meta.url).pathname.slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
 /******/ 
+/******/ /* webpack/runtime/import chunk loading */
+/******/ (() => {
+/******/ 	// no baseURI
+/******/ 	
+/******/ 	// object to store loaded and loading chunks
+/******/ 	// undefined = chunk not loaded, null = chunk preloaded/prefetched
+/******/ 	// [resolve, reject, Promise] = chunk loading, 0 = chunk loaded
+/******/ 	var installedChunks = {
+/******/ 		179: 0
+/******/ 	};
+/******/ 	
+/******/ 	var installChunk = (data) => {
+/******/ 		var {ids, modules, runtime} = data;
+/******/ 		// add "modules" to the modules object,
+/******/ 		// then flag all "ids" as loaded and fire callback
+/******/ 		var moduleId, chunkId, i = 0;
+/******/ 		for(moduleId in modules) {
+/******/ 			if(__nccwpck_require__.o(modules, moduleId)) {
+/******/ 				__nccwpck_require__.m[moduleId] = modules[moduleId];
+/******/ 			}
+/******/ 		}
+/******/ 		if(runtime) runtime(__nccwpck_require__);
+/******/ 		for(;i < ids.length; i++) {
+/******/ 			chunkId = ids[i];
+/******/ 			if(__nccwpck_require__.o(installedChunks, chunkId) && installedChunks[chunkId]) {
+/******/ 				installedChunks[chunkId][0]();
+/******/ 			}
+/******/ 			installedChunks[ids[i]] = 0;
+/******/ 		}
+/******/ 	
+/******/ 	}
+/******/ 	
+/******/ 	__nccwpck_require__.f.j = (chunkId, promises) => {
+/******/ 			// import() chunk loading for javascript
+/******/ 			var installedChunkData = __nccwpck_require__.o(installedChunks, chunkId) ? installedChunks[chunkId] : undefined;
+/******/ 			if(installedChunkData !== 0) { // 0 means "already installed".
+/******/ 	
+/******/ 				// a Promise means "currently loading".
+/******/ 				if(installedChunkData) {
+/******/ 					promises.push(installedChunkData[1]);
+/******/ 				} else {
+/******/ 					if(true) { // all chunks have JS
+/******/ 						// setup Promise in chunk cache
+/******/ 						var promise = import("./" + __nccwpck_require__.u(chunkId)).then(installChunk, (e) => {
+/******/ 							if(installedChunks[chunkId] !== 0) installedChunks[chunkId] = undefined;
+/******/ 							throw e;
+/******/ 						});
+/******/ 						var promise = Promise.race([promise, new Promise((resolve) => (installedChunkData = installedChunks[chunkId] = [resolve]))])
+/******/ 						promises.push(installedChunkData[1] = promise);
+/******/ 					} else installedChunks[chunkId] = 0;
+/******/ 				}
+/******/ 			}
+/******/ 	};
+/******/ 	
+/******/ 	// no external install chunk
+/******/ 	
+/******/ 	// no on chunks loaded
+/******/ })();
+/******/ 
 /************************************************************************/
 var __webpack_exports__ = {};
 // This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
@@ -39534,10 +41054,14 @@ __nccwpck_require__.d(__webpack_exports__, {
 var core = __nccwpck_require__(2186);
 // EXTERNAL MODULE: ./node_modules/fs-extra/lib/index.js
 var lib = __nccwpck_require__(5630);
+// EXTERNAL MODULE: ./node_modules/lodash/clone.js
+var clone = __nccwpck_require__(7498);
+// EXTERNAL MODULE: ./node_modules/lodash/difference.js
+var difference = __nccwpck_require__(4031);
 // EXTERNAL MODULE: ./node_modules/lodash/isEqual.js
 var isEqual = __nccwpck_require__(52);
-// EXTERNAL MODULE: ./node_modules/lodash/merge.js
-var merge = __nccwpck_require__(481);
+// EXTERNAL MODULE: ./node_modules/tiny-invariant/dist/tiny-invariant.cjs.js
+var tiny_invariant_cjs = __nccwpck_require__(4594);
 // EXTERNAL MODULE: ./node_modules/yaml/dist/index.js
 var dist = __nccwpck_require__(4083);
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/references/utils/getResourceNodes.js
@@ -39691,7 +41215,7 @@ function addRefNodeAtPath(refNode, path, refNodesByPath) {
 const DEFAULT_OPTIONS = {
     forceParse: false,
 };
-class ResourceParser {
+class resourceParser_ResourceParser {
     cache = new Map();
     parse(resource, options = DEFAULT_OPTIONS) {
         const cacheId = resource.id;
@@ -39781,6 +41305,16 @@ class ExtendableError extends Error {
         return (this._stack = stackLines.join("\n"));
     }
 }
+/**
+ * An error that indicates that the operation was aborted.
+ */
+class PluginLoadError extends ExtendableError {
+    plugin;
+    constructor(plugin, message) {
+        super(message);
+        this.plugin = plugin;
+    }
+}
 
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/abort.js
 
@@ -39794,12 +41328,17 @@ class AbortError extends ExtendableError {
         super(message);
     }
 }
-function throwIfAborted(signal) {
+/**
+ * Throws an AbortError if any signal is aborted.
+ */
+function throwIfAborted(...signals) {
     // AbortSignal.throwIfAborted exists but is not supported in NodeJs <v17.3.0
     // and it is also not available in abort-controller polyfill.
     // See https://nodejs.org/api/globals.html#abortsignalthrowifaborted
-    if (signal.aborted) {
-        throw new AbortError(signal.reason);
+    for (const signal of signals) {
+        if (signal && signal.aborted) {
+            throw new AbortError(signal.reason);
+        }
     }
 }
 /**
@@ -39817,12 +41356,707 @@ function nextTick() {
     return new Promise((r) => setTimeout(r, 0));
 }
 
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/customResourceDefinitions.js
+function extractSchema(crd, versionName) {
+    if (crd.kind !== "CustomResourceDefinition") {
+        return undefined;
+    }
+    const versions = crd.content?.spec?.versions || [];
+    const version = versions.find((v) => v.name === versionName);
+    const schema = JSON.parse(JSON.stringify(version?.schema?.openAPIV3Schema));
+    if (!schema) {
+        return;
+    }
+    if (!schema.properties) {
+        schema.properties = {};
+    }
+    else if (schema["x-kubernetes-preserve-unknown-fields"] !== true) {
+        schema.additionalProperties = false;
+    }
+    schema.properties["apiVersion"] = objectMetadata.properties.apiVersion;
+    schema.properties["kind"] = objectMetadata.properties.kind;
+    schema.properties["metadata"] = objectMetadata.properties.metadata;
+    Object.values(schema.properties).forEach((prop) => {
+        if (prop.type && prop.type === "object") {
+            try {
+                if (prop.additionalProperties) {
+                    delete prop["additionalProperties"];
+                }
+                prop["additionalProperties"] =
+                    prop["x-kubernetes-preserve-unknown-fields"];
+                delete prop["x-kubernetes-preserve-unknown-fields"];
+            }
+            catch (e) {
+                // this could fail - ignore
+            }
+        }
+    });
+    return schema;
+}
+const crdVersionRegex = /(v)(\d*)(alpha|beta)?(\d*)?/;
+function findDefaultVersion(crd) {
+    if (!crd.content?.spec?.versions) {
+        return undefined;
+    }
+    const versionNames = crd.content.spec.versions.map((v) => v.name);
+    versionNames.sort((a, b) => {
+        const m1 = crdVersionRegex.exec(a);
+        const m2 = crdVersionRegex.exec(b);
+        // do both versions match the regex?
+        if (m1 && m2) {
+            // do both have initial version number?
+            if (m1[2] && m2[2]) {
+                // is the initial version the same?
+                if (m1[2] === m2[2]) {
+                    // do both have an alpha or beta tag?
+                    if (m1[3] && m2[3]) {
+                        // is the tag the same?
+                        if (m1[3] === m2[3]) {
+                            // do both have an alpha or beta version?
+                            if (m1[4] && m2[4]) {
+                                return parseInt(m1[4], 10) - parseInt(m2[4], 10);
+                            }
+                            return m1[4] ? 1 : -1;
+                        }
+                        // compare tags (negate for beta > alpha)
+                        return -m1[3].localeCompare(m2[3]);
+                    }
+                    return m1[3] ? 1 : -1;
+                }
+                // compare version numbers
+                return parseInt(m2[2], 10) - parseInt(m1[2], 10);
+            }
+            return m1[2] ? 1 : -1;
+        }
+        if (m1)
+            return 1;
+        if (m2)
+            return -1;
+        return a.localeCompare(b);
+    });
+    return versionNames.length > 0 ? versionNames[0] : undefined;
+}
+const objectMetadata = {
+    description: "Standalone Object Metadata schema merged into custom schemas when necessary",
+    properties: {
+        apiVersion: {
+            description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+            type: "string",
+        },
+        kind: {
+            description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+            type: "string",
+        },
+        metadata: {
+            description: "ObjectMeta is metadata that all persisted resources must have, which includes all objects users must create.",
+            properties: {
+                annotations: {
+                    additionalProperties: {
+                        type: "string",
+                    },
+                    description: "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: http://kubernetes.io/docs/user-guide/annotations",
+                    type: "object",
+                },
+                clusterName: {
+                    description: "The name of the cluster which the object belongs to. This is used to distinguish resources with same name and namespace in different clusters. This field is not set anywhere right now and apiserver is going to ignore it if set in create or update request.",
+                    type: "string",
+                },
+                creationTimestamp: {
+                    description: "Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.",
+                    format: "date-time",
+                    type: "string",
+                },
+                deletionGracePeriodSeconds: {
+                    description: "Number of seconds allowed for this object to gracefully terminate before it will be removed from the system. Only set when deletionTimestamp is also set. May only be shortened. Read-only.",
+                    format: "int64",
+                    type: "string",
+                },
+                deletionTimestamp: {
+                    description: "Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.",
+                    format: "date-time",
+                    type: "string",
+                },
+                finalizers: {
+                    description: "Must be empty before the object is deleted from the registry. Each entry is an identifier for the responsible component that will remove the entry from the list. If the deletionTimestamp of the object is non-nil, entries in this list can only be removed. Finalizers may be processed and removed in any order.  Order is NOT enforced because it introduces significant risk of stuck finalizers. finalizers is a shared field, any actor with permission can reorder it. If the finalizer list is processed in order, then this can lead to a situation in which the component responsible for the first finalizer in the list is waiting for a signal (field value, external system, or other) produced by a component responsible for a finalizer later in the list, resulting in a deadlock. Without enforced ordering finalizers are free to order amongst themselves and are not vulnerable to ordering changes in the list.",
+                    items: {
+                        type: "string",
+                    },
+                    type: "array",
+                },
+                generateName: {
+                    description: "GenerateName is an optional prefix, used by the server, to generate a unique name ONLY IF the Name field has not been provided. If this field is used, the name returned to the client will be different than the name passed. This value will also be combined with a unique suffix. The provided value has the same validation rules as the Name field, and may be truncated by the length of the suffix required to make the value unique on the server.\n\nIf this field is specified and the generated name exists, the server will NOT return a 409 - instead, it will either return 201 Created or 500 with Reason ServerTimeout indicating a unique name could not be found in the time allotted, and the client should retry (optionally after the time indicated in the Retry-After header).\n\nApplied only if Name is not specified. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#idempotency",
+                    type: "string",
+                },
+                generation: {
+                    description: "A sequence number representing a specific generation of the desired state. Populated by the system. Read-only.",
+                    format: "int64",
+                    type: "integer",
+                },
+                labels: {
+                    additionalProperties: {
+                        type: "string",
+                    },
+                    description: "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: http://kubernetes.io/docs/user-guide/labels",
+                    type: "object",
+                },
+                managedFields: {
+                    description: "ManagedFields maps workflow-id and version to the set of fields that are managed by that workflow. This is mostly for internal housekeeping, and users typically shouldn't need to set or understand this field. A workflow can be the user's name, a controller's name, or the name of a specific apply path like \"ci-cd\". The set of fields is always in the version that the workflow used when modifying the object.",
+                    items: {
+                        description: "ManagedFieldsEntry is a workflow-id, a FieldSet and the group version of the resource that the fieldset applies to.",
+                        properties: {
+                            apiVersion: {
+                                description: 'APIVersion defines the version of this resource that this field set applies to. The format is "group/version" just like the top-level APIVersion field. It is necessary to track the version of a field set because it cannot be automatically converted.',
+                                type: "string",
+                            },
+                            fieldsType: {
+                                description: 'FieldsType is the discriminator for the different fields format and version. There is currently only one possible value: "FieldsV1"',
+                                type: "string",
+                            },
+                            fieldsV1: {
+                                description: "FieldsV1 stores a set of fields in a data structure like a Trie, in JSON format.\n\nEach key is either a '.' representing the field itself, and will always map to an empty set, or a string representing a sub-field or item. The string will follow one of these four formats: 'f:<name>', where <name> is the name of a field in a struct, or key in a map 'v:<value>', where <value> is the exact json formatted value of a list item 'i:<index>', where <index> is position of a item in a list 'k:<keys>', where <keys> is a map of  a list item's key fields to their unique values If a key maps to an empty Fields value, the field that key represents is part of the set.\n\nThe exact format is defined in sigs.k8s.io/structured-merge-diff",
+                                type: "object",
+                            },
+                            manager: {
+                                description: "Manager is an identifier of the workflow managing these fields.",
+                                type: "string",
+                            },
+                            operation: {
+                                description: "Operation is the type of operation which lead to this ManagedFieldsEntry being created. The only valid values for this field are 'Apply' and 'Update'.",
+                                type: "string",
+                            },
+                            subresource: {
+                                description: "Subresource is the name of the subresource used to update that object, or empty string if the object was updated through the main resource. The value of this field is used to distinguish between managers, even if they share the same name. For example, a status update will be distinct from a regular update using the same manager name. Note that the APIVersion field is not related to the Subresource field and it always corresponds to the version of the main resource.",
+                                type: "string",
+                            },
+                            time: {
+                                description: "Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.",
+                                format: "date-time",
+                                type: "string",
+                            },
+                        },
+                        type: "object",
+                        additionalProperties: false,
+                    },
+                    type: "array",
+                },
+                name: {
+                    description: "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
+                    type: "string",
+                },
+                namespace: {
+                    description: 'Namespace defines the space within which each name must be unique. An empty namespace is equivalent to the "default" namespace, but "default" is the canonical representation. Not all objects are required to be scoped to a namespace - the value of this field for those objects will be empty.\n\nMust be a DNS_LABEL. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/namespaces',
+                    type: "string",
+                },
+                ownerReferences: {
+                    description: "List of objects depended by this object. If ALL objects in the list have been deleted, this object will be garbage collected. If this object is managed by a controller, then an entry in this list will point to this controller, with the controller field set to true. There cannot be more than one managing controller.",
+                    items: {
+                        description: "OwnerReference contains enough information to let you identify an owning object. An owning object must be in the same namespace as the dependent, or be cluster-scoped, so there is no namespace field.",
+                        properties: {
+                            apiVersion: {
+                                description: "API version of the referent.",
+                                type: "string",
+                            },
+                            blockOwnerDeletion: {
+                                description: 'If true, AND if the owner has the "foregroundDeletion" finalizer, then the owner cannot be deleted from the key-value store until this reference is removed. Defaults to false. To set this field, a user needs "delete" permission of the owner, otherwise 422 (Unprocessable Entity) will be returned.',
+                                type: "boolean",
+                            },
+                            controller: {
+                                description: "If true, this reference points to the managing controller.",
+                                type: "boolean",
+                            },
+                            kind: {
+                                description: "Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+                                type: "string",
+                            },
+                            name: {
+                                description: "Name of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
+                                type: "string",
+                            },
+                            uid: {
+                                description: "UID of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
+                                type: "string",
+                            },
+                        },
+                        required: ["apiVersion", "kind", "name", "uid"],
+                        type: "object",
+                        "x-kubernetes-map-type": "atomic",
+                        additionalProperties: false,
+                    },
+                    type: "array",
+                },
+                resourceVersion: {
+                    description: "An opaque value that represents the internal version of this object that can be used by clients to determine when objects have changed. May be used for optimistic concurrency, change detection, and the watch operation on a resource or set of resources. Clients must treat these values as opaque and passed unmodified back to the server. They may only be valid for a particular resource or set of resources.\n\nPopulated by the system. Read-only. Value must be treated as opaque by clients and . More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency",
+                    type: "string",
+                },
+                selfLink: {
+                    description: "SelfLink is a URL representing this object. Populated by the system. Read-only.\n\nDEPRECATED Kubernetes will stop propagating this field in 1.20 release and the field is planned to be removed in 1.21 release.",
+                    type: "string",
+                },
+                uid: {
+                    description: "UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations.\n\nPopulated by the system. Read-only. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
+                    type: "string",
+                },
+            },
+            type: "object",
+            additionalProperties: false,
+        },
+    },
+    type: "object",
+    additionalProperties: false,
+};
+
 // EXTERNAL MODULE: ./node_modules/lodash/isNil.js
 var isNil = __nccwpck_require__(4977);
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/isDefined.js
 
 function isDefined(value) {
     return !isNil(value);
+}
+
+// EXTERNAL MODULE: ./node_modules/change-case/dist/index.js
+var change_case_dist = __nccwpck_require__(9091);
+// EXTERNAL MODULE: ./node_modules/lodash/keyBy.js
+var keyBy = __nccwpck_require__(827);
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/constants.js
+const NOT_CONFIGURED_ERR_MSG = (name) => `Cannot validate resources. The ${name} validator must first be configured.`;
+const NOT_FOUND_ERR_MSG = (name) => `Cannot find validator: ${name}.`;
+const constants_REF_PATH_SEPARATOR = "#";
+const constants_NAME_REFNODE_PATH = `metadata${constants_REF_PATH_SEPARATOR}name`;
+const NO_HELP_AVAILABLE = "No help available.";
+const FALLBACK_REGION = {
+    startLine: 1,
+    startColumn: 1,
+    endLine: 1,
+    endColumn: 1,
+};
+const KUSTOMIZATION_KIND = "Kustomization";
+const KUSTOMIZATION_API_GROUP = "kustomize.config.k8s.io";
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/sarif.js
+
+function sarif_getResourceId(result) {
+    return getResourceLocation(result).physicalLocation?.artifactLocation.uri;
+}
+function getFileId(result) {
+    return getFileLocation(result).physicalLocation?.artifactLocation.uri;
+}
+function getResourceLocation(result) {
+    const location = result.locations?.[1];
+    tiny_invariant_cjs(location, "invalid SARIF result");
+    return location;
+}
+function getFileLocation(result) {
+    const location = result.locations?.[0];
+    tiny_invariant_cjs(location, "invalid SARIF result");
+    return location;
+}
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/common/AbstractPlugin.js
+
+
+
+
+const DEFAULT_RULE_CONFIG = {
+    enabled: true,
+    level: "warning",
+    rank: -1,
+};
+class AbstractPlugin {
+    _metadata;
+    configured = false;
+    _enabled = true;
+    _rules = [];
+    _ruleReverseLookup = new Map(); // Lookup index by rule identifier;
+    _policyRuleReverseLookup = new Map(); // Lookup index by rule identifier;
+    _ruleNameToIdLookup = new Map();
+    _ruleConfig = new Map();
+    _previous = [];
+    constructor(metadata, rules) {
+        this._metadata = metadata;
+        this.setRules(rules);
+    }
+    setRules(rules) {
+        this._ruleReverseLookup.clear();
+        this._ruleNameToIdLookup.clear();
+        this._rules = rules;
+        rules.forEach((r, idx) => this._ruleReverseLookup.set(r.id, idx));
+        rules.forEach((r) => this._ruleNameToIdLookup.set(`${this._metadata.name}/${r.name}`, r.id));
+    }
+    get metadata() {
+        return {
+            ...this._metadata,
+            configuration: {
+                enabled: this._enabled,
+            },
+        };
+    }
+    get rules() {
+        return this._rules.map((rule) => {
+            return {
+                ...rule,
+                configuration: this.getRuleConfig(rule.id),
+            };
+        });
+    }
+    get name() {
+        return this._metadata.name;
+    }
+    get enabled() {
+        return this._enabled;
+    }
+    set enabled(value) {
+        this._enabled = value;
+    }
+    hasRule(rule) {
+        const split = rule.split("/");
+        if (split.length !== 2) {
+            // rule identifier (e.g. KSV013)
+            const ruleConfig = this._ruleConfig.get(rule);
+            return ruleConfig !== undefined;
+        }
+        else {
+            // rule display name (e.g. open-policy-agent/no-latest-image)
+            const [pluginName, ruleName] = split;
+            if (this.name !== pluginName)
+                return false;
+            const ruleId = this._ruleNameToIdLookup.get(ruleName);
+            if (!ruleId)
+                return false;
+            const ruleConfig = this._ruleConfig.get(ruleId);
+            return ruleConfig !== undefined;
+        }
+    }
+    isRuleEnabled(rule) {
+        const ruleSplit = rule.split("/");
+        if (ruleSplit.length === 1) {
+            // rule-id
+            const ruleConfig = this._ruleConfig.get(rule);
+            if (!ruleConfig)
+                return false;
+            return ruleConfig.enabled ?? true;
+        }
+        else {
+            // validator-name/rule-name
+            const ruleId = this._ruleNameToIdLookup.get(rule);
+            if (!ruleId) {
+                return false;
+            }
+            return this.getRuleConfig(ruleId).enabled ?? true;
+        }
+    }
+    createValidationResult(ruleId, args) {
+        const index = this._ruleReverseLookup.get(ruleId);
+        tiny_invariant_cjs(index !== undefined, "rules misconfigured");
+        if (!this.isRuleEnabled(ruleId)) {
+            return undefined;
+        }
+        const ruleConfig = this.getRuleConfig(ruleId);
+        return {
+            ruleId,
+            rule: {
+                index,
+                toolComponent: {
+                    name: this.name,
+                },
+            },
+            level: ruleConfig.level,
+            ...args,
+        };
+    }
+    async configure(config) {
+        this.configureRules(config.rules);
+        await this.configurePlugin(config.settings);
+        this.configured = true;
+    }
+    configureRules(rules = {}) {
+        this._ruleConfig.clear();
+        // Set defaults
+        for (const rule of this._rules) {
+            const defaultConfig = {
+                ...DEFAULT_RULE_CONFIG,
+                ...rule.defaultConfiguration,
+            };
+            this._ruleConfig.set(rule.id, defaultConfig);
+        }
+        // Set overrides
+        for (const [ruleName, newConfig] of Object.entries(rules)) {
+            // ruleName is either "validator-name/rule-name" or 'rule-id".
+            const ruleId = this._ruleNameToIdLookup.get(ruleName) ?? ruleName;
+            const ruleIndex = this._ruleReverseLookup.get(ruleId);
+            if (ruleIndex === undefined) {
+                continue; // rule not found.
+            }
+            const defaultConfig = this._ruleConfig.get(ruleId);
+            this._ruleConfig.set(ruleId, typeof newConfig === "boolean"
+                ? {
+                    ...defaultConfig,
+                    enabled: newConfig,
+                }
+                : {
+                    ...defaultConfig,
+                    enabled: true,
+                    level: newConfig === "err" ? "error" : "warning",
+                });
+        }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    configurePlugin(settings) {
+        return Promise.resolve();
+    }
+    registerCustomSchema(schema) {
+        return;
+    }
+    unregisterCustomSchema(schema) {
+        return;
+    }
+    async validate(resources, incremental) {
+        tiny_invariant_cjs(this.configured, NOT_CONFIGURED_ERR_MSG(this.name));
+        let results = await this.doValidate(resources, incremental);
+        if (incremental) {
+            results = this.merge(this._previous, results, incremental);
+        }
+        this._previous = results;
+        return {
+            tool: {
+                driver: {
+                    name: this.name,
+                    rules: this._rules,
+                },
+            },
+            results,
+        };
+    }
+    getRuleConfig(ruleId) {
+        const ruleConfig = this._ruleConfig.get(ruleId);
+        tiny_invariant_cjs(ruleConfig, `rule_config_not_found`);
+        return ruleConfig;
+    }
+    merge(previous, current, incremental) {
+        const results = [];
+        const hashmap = keyBy(incremental?.resourceIds);
+        for (const result of previous) {
+            const resourceId = sarif_getResourceId(result);
+            const isDirty = Boolean(resourceId && hashmap[resourceId]);
+            if (!isDirty) {
+                results.push(result);
+            }
+        }
+        for (const result of current) {
+            const resourceId = sarif_getResourceId(result);
+            const isDirty = resourceId && hashmap[resourceId];
+            if (isDirty) {
+                results.push(result);
+            }
+        }
+        return results;
+    }
+    async clear() {
+        this._previous = [];
+    }
+    async unload() {
+        return;
+    }
+}
+
+// EXTERNAL MODULE: ./node_modules/lodash/toLower.js
+var toLower = __nccwpck_require__(7447);
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/createLocations.js
+
+
+function createLocations(resource, region = FALLBACK_REGION) {
+    // SARIF expects relative paths without leading path separator '/'.
+    const filePath = resource.filePath.startsWith("/")
+        ? resource.filePath.substring(1)
+        : resource.filePath;
+    return [
+        {
+            physicalLocation: {
+                artifactLocation: {
+                    uriBaseId: "SRCROOT",
+                    uri: filePath,
+                },
+                region: {
+                    ...region,
+                    startLine: region.startLine + (resource.fileOffset ?? 0),
+                    endLine: region.endLine + (resource.fileOffset ?? 0),
+                },
+            },
+        },
+        {
+            physicalLocation: {
+                artifactLocation: {
+                    uriBaseId: "RESOURCE",
+                    uri: resource.id,
+                },
+                region,
+            },
+            logicalLocations: [
+                {
+                    kind: "resource",
+                    fullyQualifiedName: createFullyQualifiedName(resource),
+                    name: resource.name,
+                },
+            ],
+        },
+    ];
+}
+function createFullyQualifiedName(resource) {
+    return resource.namespace
+        ? `${resource.name}.${resource.namespace}.${toLower(resource.kind)}@${resource.filePath}`
+        : `${resource.name}.${toLower(resource.kind)}@${resource.filePath}`;
+}
+
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/custom/simpleValidator.js
+
+
+
+
+
+
+/**
+ * Validator for simple custom policies.
+ */
+class simpleValidator_SimpleCustomValidator extends AbstractPlugin {
+    _parser;
+    _settings = {};
+    _ruleRuntime;
+    constructor(plugin, parser) {
+        super(toPluginMetadata(plugin), toSarifRules(plugin));
+        this._parser = parser;
+        this._ruleRuntime = toRuntime(plugin);
+    }
+    async configurePlugin(rawSettings = {}) {
+        this._settings = rawSettings;
+    }
+    async doValidate(resources, incremental) {
+        const results = [];
+        const resourceMap = keyBy(resources, (r) => r.id);
+        const clonedResources = resources.map((r) => JSON.parse(JSON.stringify({ ...r.content, _id: r.id })));
+        const dirtyResources = incremental
+            ? clonedResources.filter((r) => incremental.resourceIds.includes(r._id))
+            : clonedResources;
+        for (const rule of this.rules) {
+            if (!this.isRuleEnabled(rule.id)) {
+                continue;
+            }
+            const { validate } = this._ruleRuntime[rule.id];
+            try {
+                await validate({
+                    resources: dirtyResources,
+                    allResources: resources,
+                    settings: this._settings,
+                }, {
+                    parse: (res) => {
+                        const resource = resourceMap[res._id];
+                        return this._parser.parse(resource).parsedDoc;
+                    },
+                    report: (res, args) => {
+                        const resource = resourceMap[res._id];
+                        const result = this.adaptToValidationResult(rule, resource, args);
+                        if (!result)
+                            return;
+                        results.push(result);
+                    },
+                    getRelated: (res) => {
+                        const resource = resourceMap[res._id];
+                        if (!resource)
+                            return [];
+                        const relatedResources = (resource?.refs ?? [])
+                            .map((ref) => ref.target?.type === "resource"
+                            ? ref.target.resourceId
+                            : undefined)
+                            .filter(isDefined)
+                            .map((relatedId) => resourceMap[relatedId])
+                            .filter(isDefined);
+                        const result = relatedResources.map((r) => {
+                            return JSON.parse(JSON.stringify({ ...r.content, _id: r.id }));
+                        });
+                        return result;
+                    },
+                });
+            }
+            catch (err) {
+                if (this._settings.debug) {
+                    console.error("rule_failed", { rule: rule.name, error: err });
+                }
+            }
+        }
+        return results;
+    }
+    adaptToValidationResult(rule, resource, args) {
+        const { parsedDoc } = this._parser.parse(resource);
+        const path = args.path.split(".");
+        const node = determineClosestNodeForPath(parsedDoc, path);
+        const region = node?.range
+            ? this._parser.parseErrorRegion(resource, node.range)
+            : undefined;
+        const locations = createLocations(resource, region);
+        return this.createValidationResult(rule.id, {
+            message: {
+                text: args.message ?? rule.shortDescription.text,
+            },
+            locations,
+        });
+    }
+}
+/**
+ * Use a path hint to determine the node of the error or closest parent.
+ *
+ * Example:
+ * - Hint: $container.securityContext.readOnlyRootFilesystem and desired value is `true`.
+ * - When $container specifies `securityContext.readOnlyRootFilesystem` then it underlines the incorrect `false` value.
+ * - When $container specifies `securityContext` then it underlines whole context object.
+ * - When $container does not specify `securityContext` then it underlines whole container object.
+ */
+function determineClosestNodeForPath(resource, path, prefix = []) {
+    const currentPath = prefix.concat(path);
+    while (currentPath.length > prefix.length) {
+        const node = resource.getIn(currentPath, true);
+        if ((0,dist.isNode)(node)) {
+            return node;
+        }
+        currentPath.pop();
+    }
+    const node = resource.getIn(currentPath, true);
+    return (0,dist.isNode)(node) ? node : undefined;
+}
+function toPluginMetadata(plugin) {
+    return {
+        id: plugin.id,
+        name: plugin.name,
+        description: plugin.description,
+        icon: plugin.icon,
+        learnMoreUrl: plugin.learnMoreUrl,
+        displayName: plugin.displayName ?? (0,change_case_dist.sentenceCase)(plugin.name),
+    };
+}
+function toSarifRules(plugin) {
+    return Object.entries(plugin.rules).map(([name, r]) => {
+        return {
+            id: toRuleId(plugin.id, r.id),
+            name: (0,change_case_dist.paramCase)(name),
+            shortDescription: {
+                text: r.description,
+            },
+            fullDescription: r.fullDescription
+                ? {
+                    text: r.fullDescription,
+                }
+                : undefined,
+            help: {
+                text: r.help ?? "No help available.",
+            },
+        };
+    });
+}
+function toRuntime(plugin) {
+    const entries = Object.entries(plugin.rules).map(([_, rule]) => {
+        return [toRuleId(plugin.id, rule.id), { validate: rule.validate }];
+    });
+    return Object.fromEntries(entries);
+}
+function toRuleId(pluginId, ruleId) {
+    return `${pluginId}${ruleId.toString().padStart(3, "0")}`;
 }
 
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/knownResourceKinds.js
@@ -39864,7 +42098,7 @@ const KNOWN_RESOURCE_KINDS = [
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/kubernetes-schema/schemaLoader.js
 
 const SCHEMA_BASE = "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master";
-class SchemaLoader {
+class schemaLoader_SchemaLoader {
     schemaCache = new Map();
     fetcher;
     constructor(init) {
@@ -39908,8 +42142,11 @@ class SchemaLoader {
             return undefined;
         }
     }
-    addCustomSchema(key, value) {
+    registerCustomSchema(key, value) {
         this.schemaCache.set(key, value);
+    }
+    unregisterCustomSchema(key) {
+        this.schemaCache.delete(key);
     }
     hasSchema(key) {
         return this.schemaCache.has(key);
@@ -43026,472 +45263,6 @@ var mod = /*#__PURE__*/Object.freeze({
 
 
 
-// EXTERNAL MODULE: ./node_modules/lodash/keyBy.js
-var keyBy = __nccwpck_require__(827);
-// EXTERNAL MODULE: ./node_modules/tiny-invariant/dist/tiny-invariant.cjs.js
-var tiny_invariant_cjs = __nccwpck_require__(4594);
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/constants.js
-const NOT_CONFIGURED_ERR_MSG = (name) => `Cannot validate resources. The ${name} validator must first be configured.`;
-const NOT_FOUND_ERR_MSG = (name) => `Cannot find validator: ${name}.`;
-const constants_REF_PATH_SEPARATOR = "#";
-const constants_NAME_REFNODE_PATH = `metadata${constants_REF_PATH_SEPARATOR}name`;
-const NO_HELP_AVAILABLE = "No help available.";
-const FALLBACK_REGION = {
-    startLine: 1,
-    startColumn: 1,
-    endLine: 1,
-    endColumn: 1,
-};
-const KUSTOMIZATION_KIND = "Kustomization";
-const KUSTOMIZATION_API_GROUP = "kustomize.config.k8s.io";
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/sarif.js
-
-function sarif_getResourceId(result) {
-    return getResourceLocation(result).physicalLocation?.artifactLocation.uri;
-}
-function getFileId(result) {
-    return getFileLocation(result).physicalLocation?.artifactLocation.uri;
-}
-function getResourceLocation(result) {
-    const location = result.locations?.[1];
-    tiny_invariant_cjs(location, "invalid SARIF result");
-    return location;
-}
-function getFileLocation(result) {
-    const location = result.locations?.[0];
-    tiny_invariant_cjs(location, "invalid SARIF result");
-    return location;
-}
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/common/AbstractValidator.js
-
-
-
-
-class AbstractValidator {
-    name;
-    configured = false;
-    _enabled = true;
-    _rules;
-    _ruleReverseLookup = new Map(); // Lookup index by rule identifier;
-    _policyRuleReverseLookup = new Map(); // Lookup index by rule identifier;
-    _ruleNameToIdLookup = new Map();
-    _ruleConfig = new Map();
-    _previous = [];
-    constructor(name, rules) {
-        this.name = name;
-        this._rules = rules;
-        rules.forEach((r, idx) => this._ruleReverseLookup.set(r.id, idx));
-        rules.forEach((r) => this._ruleNameToIdLookup.set(`${this.name}/${r.name}`, r.id));
-    }
-    get enabled() {
-        return this._enabled;
-    }
-    set enabled(value) {
-        this._enabled = value;
-    }
-    get rules() {
-        return this._rules;
-    }
-    isRuleEnabled(rule) {
-        const ruleSplit = rule.split("/");
-        if (ruleSplit.length === 1) {
-            // rule-id
-            const ruleConfig = this._ruleConfig.get(rule);
-            if (!ruleConfig)
-                return false;
-            return ruleConfig.enabled ?? true;
-        }
-        else {
-            // validator-name/rule-name
-            const ruleId = this._ruleNameToIdLookup.get(rule);
-            if (!ruleId) {
-                return false;
-            }
-            return this.getRuleConfig(ruleId).enabled ?? true;
-        }
-    }
-    createValidationResult(ruleId, args) {
-        const index = this._ruleReverseLookup.get(ruleId);
-        tiny_invariant_cjs(index !== undefined, "rules misconfigured");
-        if (!this.isRuleEnabled(ruleId)) {
-            return undefined;
-        }
-        const ruleConfig = this.getRuleConfig(ruleId);
-        return {
-            ruleId,
-            rule: {
-                index,
-                toolComponent: {
-                    name: this.name,
-                },
-            },
-            level: ruleConfig.level,
-            ...args,
-        };
-    }
-    async configure(config) {
-        this.configureRules(config.rules);
-        await this.configureValidator(config.settings);
-        this.configured = true;
-    }
-    configureRules(rules = {}) {
-        this._ruleConfig.clear();
-        // Set defaults
-        for (const rule of this._rules) {
-            this._ruleConfig.set(rule.id, rule.defaultConfiguration ?? {});
-        }
-        // Set overrides
-        for (const [ruleName, newConfig] of Object.entries(rules)) {
-            // ruleName is either "validator-name/rule-name" or 'rule-id".
-            const ruleId = this._ruleNameToIdLookup.get(ruleName) ?? ruleName;
-            const ruleIndex = this._ruleReverseLookup.get(ruleId);
-            if (ruleIndex === undefined) {
-                continue; // rule not found.
-            }
-            const defaultConfig = this._rules[ruleIndex].defaultConfiguration;
-            this._ruleConfig.set(ruleId, typeof newConfig === "boolean"
-                ? {
-                    ...defaultConfig,
-                    enabled: newConfig,
-                }
-                : {
-                    ...defaultConfig,
-                    enabled: true,
-                    level: newConfig === "err" ? "error" : "warning",
-                });
-        }
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    configureValidator(settings) {
-        return Promise.resolve();
-    }
-    async clear() {
-        this._previous = [];
-    }
-    async validate(resources, incremental) {
-        tiny_invariant_cjs(this.configured, NOT_CONFIGURED_ERR_MSG(this.name));
-        let results = await this.doValidate(resources, incremental);
-        if (incremental) {
-            results = this.merge(this._previous, results, incremental);
-        }
-        this._previous = results;
-        return {
-            tool: {
-                driver: {
-                    name: this.name,
-                    rules: this.rules,
-                },
-            },
-            results,
-        };
-    }
-    getRuleConfig(ruleId) {
-        const ruleConfig = this._ruleConfig.get(ruleId);
-        tiny_invariant_cjs(ruleConfig, `rule_config_not_found`);
-        return ruleConfig;
-    }
-    merge(previous, current, incremental) {
-        const results = [];
-        const hashmap = keyBy(incremental?.resourceIds);
-        for (const result of previous) {
-            const resourceId = sarif_getResourceId(result);
-            const isDirty = Boolean(resourceId && hashmap[resourceId]);
-            if (!isDirty) {
-                results.push(result);
-            }
-        }
-        for (const result of current) {
-            const resourceId = sarif_getResourceId(result);
-            const isDirty = resourceId && hashmap[resourceId];
-            if (isDirty) {
-                results.push(result);
-            }
-        }
-        return results;
-    }
-}
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/utils/createLocations.js
-
-function createLocations(resource, region = FALLBACK_REGION) {
-    // SARIF expects relative paths without leading path separator '/'.
-    const filePath = resource.filePath.startsWith("/")
-        ? resource.filePath.substring(1)
-        : resource.filePath;
-    return [
-        {
-            physicalLocation: {
-                artifactLocation: {
-                    uriBaseId: "SRCROOT",
-                    uri: filePath,
-                },
-                region: {
-                    ...region,
-                    startLine: region.startLine + (resource.fileOffset ?? 0),
-                    endLine: region.endLine + (resource.fileOffset ?? 0),
-                },
-            },
-        },
-        {
-            physicalLocation: {
-                artifactLocation: {
-                    uriBaseId: "RESOURCE",
-                    uri: resource.id,
-                },
-                region,
-            },
-        },
-    ];
-}
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/kubernetes-schema/customResourceDefinitions.js
-function extractSchema(crd, versionName) {
-    const versions = crd?.spec?.versions || [];
-    const version = versions.find((v) => v.name === versionName);
-    const schema = JSON.parse(JSON.stringify(version?.schema?.openAPIV3Schema));
-    if (!schema) {
-        return;
-    }
-    if (!schema.properties) {
-        schema.properties = {};
-    }
-    else if (schema["x-kubernetes-preserve-unknown-fields"] !== true) {
-        schema.additionalProperties = false;
-    }
-    schema.properties["apiVersion"] = objectMetadata.properties.apiVersion;
-    schema.properties["kind"] = objectMetadata.properties.kind;
-    schema.properties["metadata"] = objectMetadata.properties.metadata;
-    Object.values(schema.properties).forEach((prop) => {
-        if (prop.type && prop.type === "object") {
-            try {
-                if (prop.additionalProperties) {
-                    delete prop["additionalProperties"];
-                }
-                prop["additionalProperties"] =
-                    prop["x-kubernetes-preserve-unknown-fields"];
-                delete prop["x-kubernetes-preserve-unknown-fields"];
-            }
-            catch (e) {
-                // this could fail - ignore
-            }
-        }
-    });
-    return schema;
-}
-const crdVersionRegex = /(v)(\d*)(alpha|beta)?(\d*)?/;
-function findDefaultVersion(crd) {
-    if (!crd?.spec?.versions) {
-        return undefined;
-    }
-    const versionNames = crd.spec.versions.map((v) => v.name);
-    versionNames.sort((a, b) => {
-        const m1 = crdVersionRegex.exec(a);
-        const m2 = crdVersionRegex.exec(b);
-        // do both versions match the regex?
-        if (m1 && m2) {
-            // do both have initial version number?
-            if (m1[2] && m2[2]) {
-                // is the initial version the same?
-                if (m1[2] === m2[2]) {
-                    // do both have an alpha or beta tag?
-                    if (m1[3] && m2[3]) {
-                        // is the tag the same?
-                        if (m1[3] === m2[3]) {
-                            // do both have an alpha or beta version?
-                            if (m1[4] && m2[4]) {
-                                return parseInt(m1[4], 10) - parseInt(m2[4], 10);
-                            }
-                            return m1[4] ? 1 : -1;
-                        }
-                        // compare tags (negate for beta > alpha)
-                        return -m1[3].localeCompare(m2[3]);
-                    }
-                    return m1[3] ? 1 : -1;
-                }
-                // compare version numbers
-                return parseInt(m2[2], 10) - parseInt(m1[2], 10);
-            }
-            return m1[2] ? 1 : -1;
-        }
-        if (m1)
-            return 1;
-        if (m2)
-            return -1;
-        return a.localeCompare(b);
-    });
-    return versionNames.length > 0 ? versionNames[0] : undefined;
-}
-const objectMetadata = {
-    description: "Standalone Object Metadata schema merged into custom schemas when necessary",
-    properties: {
-        apiVersion: {
-            description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
-            type: "string",
-        },
-        kind: {
-            description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
-            type: "string",
-        },
-        metadata: {
-            description: "ObjectMeta is metadata that all persisted resources must have, which includes all objects users must create.",
-            properties: {
-                annotations: {
-                    additionalProperties: {
-                        type: "string",
-                    },
-                    description: "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: http://kubernetes.io/docs/user-guide/annotations",
-                    type: "object",
-                },
-                clusterName: {
-                    description: "The name of the cluster which the object belongs to. This is used to distinguish resources with same name and namespace in different clusters. This field is not set anywhere right now and apiserver is going to ignore it if set in create or update request.",
-                    type: "string",
-                },
-                creationTimestamp: {
-                    description: "Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.",
-                    format: "date-time",
-                    type: "string",
-                },
-                deletionGracePeriodSeconds: {
-                    description: "Number of seconds allowed for this object to gracefully terminate before it will be removed from the system. Only set when deletionTimestamp is also set. May only be shortened. Read-only.",
-                    format: "int64",
-                    type: "string",
-                },
-                deletionTimestamp: {
-                    description: "Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.",
-                    format: "date-time",
-                    type: "string",
-                },
-                finalizers: {
-                    description: "Must be empty before the object is deleted from the registry. Each entry is an identifier for the responsible component that will remove the entry from the list. If the deletionTimestamp of the object is non-nil, entries in this list can only be removed. Finalizers may be processed and removed in any order.  Order is NOT enforced because it introduces significant risk of stuck finalizers. finalizers is a shared field, any actor with permission can reorder it. If the finalizer list is processed in order, then this can lead to a situation in which the component responsible for the first finalizer in the list is waiting for a signal (field value, external system, or other) produced by a component responsible for a finalizer later in the list, resulting in a deadlock. Without enforced ordering finalizers are free to order amongst themselves and are not vulnerable to ordering changes in the list.",
-                    items: {
-                        type: "string",
-                    },
-                    type: "array",
-                },
-                generateName: {
-                    description: "GenerateName is an optional prefix, used by the server, to generate a unique name ONLY IF the Name field has not been provided. If this field is used, the name returned to the client will be different than the name passed. This value will also be combined with a unique suffix. The provided value has the same validation rules as the Name field, and may be truncated by the length of the suffix required to make the value unique on the server.\n\nIf this field is specified and the generated name exists, the server will NOT return a 409 - instead, it will either return 201 Created or 500 with Reason ServerTimeout indicating a unique name could not be found in the time allotted, and the client should retry (optionally after the time indicated in the Retry-After header).\n\nApplied only if Name is not specified. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#idempotency",
-                    type: "string",
-                },
-                generation: {
-                    description: "A sequence number representing a specific generation of the desired state. Populated by the system. Read-only.",
-                    format: "int64",
-                    type: "integer",
-                },
-                labels: {
-                    additionalProperties: {
-                        type: "string",
-                    },
-                    description: "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: http://kubernetes.io/docs/user-guide/labels",
-                    type: "object",
-                },
-                managedFields: {
-                    description: "ManagedFields maps workflow-id and version to the set of fields that are managed by that workflow. This is mostly for internal housekeeping, and users typically shouldn't need to set or understand this field. A workflow can be the user's name, a controller's name, or the name of a specific apply path like \"ci-cd\". The set of fields is always in the version that the workflow used when modifying the object.",
-                    items: {
-                        description: "ManagedFieldsEntry is a workflow-id, a FieldSet and the group version of the resource that the fieldset applies to.",
-                        properties: {
-                            apiVersion: {
-                                description: 'APIVersion defines the version of this resource that this field set applies to. The format is "group/version" just like the top-level APIVersion field. It is necessary to track the version of a field set because it cannot be automatically converted.',
-                                type: "string",
-                            },
-                            fieldsType: {
-                                description: 'FieldsType is the discriminator for the different fields format and version. There is currently only one possible value: "FieldsV1"',
-                                type: "string",
-                            },
-                            fieldsV1: {
-                                description: "FieldsV1 stores a set of fields in a data structure like a Trie, in JSON format.\n\nEach key is either a '.' representing the field itself, and will always map to an empty set, or a string representing a sub-field or item. The string will follow one of these four formats: 'f:<name>', where <name> is the name of a field in a struct, or key in a map 'v:<value>', where <value> is the exact json formatted value of a list item 'i:<index>', where <index> is position of a item in a list 'k:<keys>', where <keys> is a map of  a list item's key fields to their unique values If a key maps to an empty Fields value, the field that key represents is part of the set.\n\nThe exact format is defined in sigs.k8s.io/structured-merge-diff",
-                                type: "object",
-                            },
-                            manager: {
-                                description: "Manager is an identifier of the workflow managing these fields.",
-                                type: "string",
-                            },
-                            operation: {
-                                description: "Operation is the type of operation which lead to this ManagedFieldsEntry being created. The only valid values for this field are 'Apply' and 'Update'.",
-                                type: "string",
-                            },
-                            subresource: {
-                                description: "Subresource is the name of the subresource used to update that object, or empty string if the object was updated through the main resource. The value of this field is used to distinguish between managers, even if they share the same name. For example, a status update will be distinct from a regular update using the same manager name. Note that the APIVersion field is not related to the Subresource field and it always corresponds to the version of the main resource.",
-                                type: "string",
-                            },
-                            time: {
-                                description: "Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.",
-                                format: "date-time",
-                                type: "string",
-                            },
-                        },
-                        type: "object",
-                        additionalProperties: false,
-                    },
-                    type: "array",
-                },
-                name: {
-                    description: "Name must be unique within a namespace. Is required when creating resources, although some resources may allow a client to request the generation of an appropriate name automatically. Name is primarily intended for creation idempotence and configuration definition. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
-                    type: "string",
-                },
-                namespace: {
-                    description: 'Namespace defines the space within which each name must be unique. An empty namespace is equivalent to the "default" namespace, but "default" is the canonical representation. Not all objects are required to be scoped to a namespace - the value of this field for those objects will be empty.\n\nMust be a DNS_LABEL. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/namespaces',
-                    type: "string",
-                },
-                ownerReferences: {
-                    description: "List of objects depended by this object. If ALL objects in the list have been deleted, this object will be garbage collected. If this object is managed by a controller, then an entry in this list will point to this controller, with the controller field set to true. There cannot be more than one managing controller.",
-                    items: {
-                        description: "OwnerReference contains enough information to let you identify an owning object. An owning object must be in the same namespace as the dependent, or be cluster-scoped, so there is no namespace field.",
-                        properties: {
-                            apiVersion: {
-                                description: "API version of the referent.",
-                                type: "string",
-                            },
-                            blockOwnerDeletion: {
-                                description: 'If true, AND if the owner has the "foregroundDeletion" finalizer, then the owner cannot be deleted from the key-value store until this reference is removed. Defaults to false. To set this field, a user needs "delete" permission of the owner, otherwise 422 (Unprocessable Entity) will be returned.',
-                                type: "boolean",
-                            },
-                            controller: {
-                                description: "If true, this reference points to the managing controller.",
-                                type: "boolean",
-                            },
-                            kind: {
-                                description: "Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
-                                type: "string",
-                            },
-                            name: {
-                                description: "Name of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#names",
-                                type: "string",
-                            },
-                            uid: {
-                                description: "UID of the referent. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
-                                type: "string",
-                            },
-                        },
-                        required: ["apiVersion", "kind", "name", "uid"],
-                        type: "object",
-                        "x-kubernetes-map-type": "atomic",
-                        additionalProperties: false,
-                    },
-                    type: "array",
-                },
-                resourceVersion: {
-                    description: "An opaque value that represents the internal version of this object that can be used by clients to determine when objects have changed. May be used for optimistic concurrency, change detection, and the watch operation on a resource or set of resources. Clients must treat these values as opaque and passed unmodified back to the server. They may only be valid for a particular resource or set of resources.\n\nPopulated by the system. Read-only. Value must be treated as opaque by clients and . More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency",
-                    type: "string",
-                },
-                selfLink: {
-                    description: "SelfLink is a URL representing this object. Populated by the system. Read-only.\n\nDEPRECATED Kubernetes will stop propagating this field in 1.20 release and the field is planned to be removed in 1.21 release.",
-                    type: "string",
-                },
-                uid: {
-                    description: "UID is the unique in time and space value for this object. It is typically generated by the server on successful creation of a resource and is not allowed to change on PUT operations.\n\nPopulated by the system. Read-only. More info: http://kubernetes.io/docs/user-guide/identifiers#uids",
-                    type: "string",
-                },
-            },
-            type: "object",
-            additionalProperties: false,
-        },
-    },
-    type: "object",
-    additionalProperties: false,
-};
-
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/kubernetes-schema/resourcePrefixMap.js
 function getResourceSchemaPrefix(kind) {
     const prefix = RESOURCE_SCHEMA_PREFIX[kind];
@@ -43522,7 +45293,7 @@ const KUBERNETES_SCHEMA_RULES = [
         id: "K8S001",
         name: "schema-violated",
         shortDescription: {
-            text: "The resource is formated incorrectly.",
+            text: "The resource is formatted incorrectly.",
         },
         fullDescription: {
             text: "The resource is violating the schema violation. The Kubernetes API will not accept this resource.",
@@ -43543,22 +45314,27 @@ const KUBERNETES_SCHEMA_RULES = [
 
 
 
-
 const Settings = mod.object({
     schemaVersion: mod.string().default("1.24.2"),
 });
-class KubernetesSchemaValidator extends AbstractValidator {
+class validator_KubernetesSchemaValidator extends AbstractPlugin {
     resourceParser;
     schemaLoader;
-    static toolName = "kubernetes-schema";
     _settings;
     ajv;
     constructor(resourceParser, schemaLoader) {
-        super(KubernetesSchemaValidator.toolName, KUBERNETES_SCHEMA_RULES);
+        super({
+            id: "K8S",
+            name: "kubernetes-schema",
+            displayName: "Kubernetes Schema",
+            description: "Validates that your manifests are well-defined in the schema for their resource kind/version.",
+            icon: "k8s-schema",
+            learnMoreUrl: "https://kubeshop.github.io/monokle/resource-validation/",
+        }, KUBERNETES_SCHEMA_RULES);
         this.resourceParser = resourceParser;
         this.schemaLoader = schemaLoader;
     }
-    async configureValidator(rawSettings = {}) {
+    async configurePlugin(rawSettings = {}) {
         this._settings = Settings.parse(rawSettings["kubernetes-schema"] ?? {});
         const version = this._settings.schemaVersion;
         const schema = await this.schemaLoader.getFullSchema(version);
@@ -43585,7 +45361,6 @@ class KubernetesSchemaValidator extends AbstractValidator {
         KNOWN_RESOURCE_KINDS.forEach((kind) => this.getResourceValidator(kind));
     }
     async doValidate(resources, incremental) {
-        this.preprocessCustomResourceDefinitions(resources);
         const results = [];
         const dirtyResources = incremental
             ? resources.filter((r) => incremental.resourceIds.includes(r.id))
@@ -43596,36 +45371,21 @@ class KubernetesSchemaValidator extends AbstractValidator {
         }
         return results;
     }
-    preprocessCustomResourceDefinitions(resources) {
-        const crds = resources.filter((r) => r.kind === "CustomResourceDefinition");
-        for (const crd of crds) {
-            const spec = crd.content.spec;
-            const kind = spec?.names?.kind;
-            const kindVersion = findDefaultVersion(crd.content);
-            if (!kindVersion) {
-                continue;
-            }
-            const schema = extractSchema(crd.content, kindVersion);
-            if (!schema) {
-                continue;
-            }
-            this.addCustomSchema(kind, schema);
-        }
-    }
-    addCustomSchema(kind, schema) {
-        const version = this._settings.schemaVersion;
-        if (!version) {
-            return;
-        }
-        const key = `${version}-${kind}`;
+    registerCustomSchema({ kind, apiVersion, schema, }) {
+        const key = `${apiVersion}-${kind}`;
         if (this.schemaLoader.hasSchema(key)) {
             return;
         }
-        this.schemaLoader.addCustomSchema(key, schema);
+        this.schemaLoader.registerCustomSchema(key, schema);
         this.ajv.addSchema(schema, `#/definitions/${key}`);
     }
+    unregisterCustomSchema(schema) {
+        const key = `${schema.apiVersion}-${schema.kind}`;
+        this.schemaLoader.unregisterCustomSchema(key);
+        this.ajv.removeSchema(`#/definitions/${key}`);
+    }
     async validateResource(resource) {
-        const validate = await this.getResourceValidator(resource.kind);
+        const validate = await this.getResourceValidator(resource);
         if (!validate) {
             return [];
         }
@@ -43641,19 +45401,13 @@ class KubernetesSchemaValidator extends AbstractValidator {
      *
      * @see https://stackoverflow.com/a/63909042
      */
-    async getResourceValidator(kind) {
+    async getResourceValidator(resourceOrResourceKind) {
+        const kind = typeof resourceOrResourceKind === 'string' ? resourceOrResourceKind : resourceOrResourceKind.kind;
         const prefix = getResourceSchemaPrefix(kind);
-        // could be custom resource
-        const version = this._settings.schemaVersion;
-        if (!prefix && version) {
-            const key = `${version}-${kind}`;
-            const validate = this.ajv.getSchema(`#/definitions/${key}`);
-            return validate;
-        }
-        if (!prefix) {
-            return undefined;
-        }
-        const keyRef = `#/definitions/${prefix}.${kind}`;
+        const key = prefix
+            ? `${prefix}.${kind}` // known resource
+            : `${resourceOrResourceKind.apiVersion}-${kind}`; // custom resource
+        const keyRef = `#/definitions/${key}`;
         const validate = this.ajv.getSchema(keyRef);
         return validate;
     }
@@ -43692,73 +45446,8 @@ function findJsonPointerNode(valuesDoc, path) {
     return valueNode;
 }
 
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/labels/rules.js
-const LABELS_RULES = [
-    {
-        id: "LBL001",
-        name: "no-empty-labels",
-        shortDescription: {
-            text: "Cannot find any label.",
-        },
-        fullDescription: {
-            text: "The resource should use labels to easily identify it. Without labels it is difficult to determine source of deployment and ownership.",
-        },
-        help: {
-            text: "Add any label to the Kubernetes resource.",
-        },
-    },
-];
-
-;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/labels/validator.js
-
-
-
-
-/**
- * Trivial validator used for development and testing.
- */
-class LabelsValidator extends AbstractValidator {
-    parser;
-    static toolName = "labels";
-    constructor(parser) {
-        super(LabelsValidator.toolName, LABELS_RULES);
-        this.parser = parser;
-    }
-    async doValidate(resources, incremental) {
-        const invalidResources = [];
-        const dirtyResources = incremental
-            ? resources.filter((r) => incremental.resourceIds.includes(r.id))
-            : resources;
-        for (const resource of dirtyResources) {
-            const labels = Object.entries(resource.content.metadata?.labels ?? {});
-            const hasLabels = labels.length > 0;
-            if (!hasLabels) {
-                invalidResources.push(resource);
-            }
-        }
-        const results = invalidResources
-            .map((r) => this.adaptToValidationResult(r))
-            .filter(isDefined);
-        return results;
-    }
-    adaptToValidationResult(resource) {
-        const { parsedDoc } = this.parser.parse(resource);
-        const node = parsedDoc.getIn(["metadata"], true);
-        const region = node?.range
-            ? this.parser.parseErrorRegion(resource, node.range)
-            : undefined;
-        const locations = createLocations(resource, region);
-        return this.createValidationResult("LBL001", {
-            message: {
-                text: "Resource is unlabelled.",
-            },
-            locations,
-        });
-    }
-}
-
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/open-policy-agent/wasmLoader/RemoteWasmLoader.js
-class RemoteWasmLoader {
+class RemoteWasmLoader_RemoteWasmLoader {
     async load(url) {
         const response = await fetch(url);
         const data = await response.arrayBuffer();
@@ -43792,7 +45481,7 @@ const DEFAULT_TRIVY_PLUGIN = {
             id: "KSV001",
             name: "no-elevated-process",
             shortDescription: {
-                text: "Disallow the process from elevating its privileges.",
+                text: "Disallow the process from elevating its privileges",
             },
             fullDescription: {
                 text: "A program inside the container can elevate its own privileges and run as root, which might give the program control over the container and node.",
@@ -43805,7 +45494,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 problem: {
                     severity: "warning",
                 },
-                severity: "medium",
+                "security-severity": 5,
                 entrypoint: "appshield/kubernetes/KSV001/deny",
                 path: "$container.securityContext.allowPrivilegeEscalation",
             },
@@ -43827,7 +45516,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 problem: {
                     severity: "warning",
                 },
-                severity: "medium",
+                "security-severity": 5,
                 entrypoint: "appshield/kubernetes/KSV002/deny",
                 path: "$container.AppArmor",
             },
@@ -43846,7 +45535,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Add 'ALL' to containers[].securityContext.capabilities.drop.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV003/deny",
                 path: "$container.securityContext.capabilities.drop",
             },
@@ -43864,8 +45553,11 @@ const DEFAULT_TRIVY_PLUGIN = {
             help: {
                 text: "Remove the SYS_ADMIN capability from 'containers[].securityContext.capabilities.add'.",
             },
+            defaultConfiguration: {
+                level: "error",
+            },
             properties: {
-                severity: "high",
+                "security-severity": 8,
                 entrypoint: "appshield/kubernetes/KSV005/deny",
                 path: "$container.securityContext.capabilities.add",
             },
@@ -43883,8 +45575,11 @@ const DEFAULT_TRIVY_PLUGIN = {
             help: {
                 text: "Do not specify `/var/run/docker.sock` in spec.template.volumes.hostPath.path.",
             },
+            defaultConfiguration: {
+                level: "error",
+            },
             properties: {
-                severity: "high",
+                "security-severity": 8,
                 entrypoint: "appshield/kubernetes/KSV006/deny",
                 path: "spec.template.spec.volumes.hostPath.path",
             },
@@ -43902,8 +45597,11 @@ const DEFAULT_TRIVY_PLUGIN = {
             help: {
                 text: "Do not set 'spec.template.spec.hostIPC' to true.",
             },
+            defaultConfiguration: {
+                level: "error",
+            },
             properties: {
-                severity: "high",
+                "security-severity": 8,
                 entrypoint: "appshield/kubernetes/KSV008/deny",
                 path: "spec.template.spec.hostIPC",
             },
@@ -43921,8 +45619,11 @@ const DEFAULT_TRIVY_PLUGIN = {
             help: {
                 text: "Do not set 'spec.template.spec.hostNetwork' to true.",
             },
+            defaultConfiguration: {
+                level: "error",
+            },
             properties: {
-                severity: "high",
+                "security-severity": 8,
                 entrypoint: "appshield/kubernetes/KSV009/deny",
                 path: "spec.template.spec.hostNetwork",
             },
@@ -43940,8 +45641,11 @@ const DEFAULT_TRIVY_PLUGIN = {
             help: {
                 text: "Do not set 'spec.template.spec.hostPID' to true.",
             },
+            defaultConfiguration: {
+                level: "error",
+            },
             properties: {
-                severity: "high",
+                "security-severity": 8,
                 entrypoint: "appshield/kubernetes/KSV010/deny",
                 path: "spec.template.spec.hostPID",
             },
@@ -43960,7 +45664,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Add a cpu limitation to 'spec.resources.limits.cpu'.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV011/deny",
                 path: "$container.resources.limits.cpu",
             },
@@ -43979,7 +45683,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Set 'containers[].securityContext.runAsNonRoot' to true.",
             },
             properties: {
-                severity: "medium",
+                "security-severity": 5,
                 entrypoint: "appshield/kubernetes/KSV012/deny",
                 path: "$container.securityContext.runAsNonRoot",
             },
@@ -43998,7 +45702,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Use a specific container image tag that is not 'latest'.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV013/deny",
                 path: "$container.image",
             },
@@ -44017,7 +45721,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Change 'containers[].securityContext.readOnlyRootFilesystem' to 'true'.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV014/deny",
                 path: "$container.securityContext.readOnlyRootFilesystem",
             },
@@ -44036,7 +45740,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Set 'containers[].resources.requests.cpu'.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV015/deny",
                 path: "$container.resources.requests.cpu",
             },
@@ -44055,7 +45759,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Set 'containers[].resources.requests.memory'.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV016/deny",
                 path: "$container.resources.requests.memory",
             },
@@ -44073,8 +45777,11 @@ const DEFAULT_TRIVY_PLUGIN = {
             help: {
                 text: "Change 'containers[].securityContext.privileged' to false",
             },
+            defaultConfiguration: {
+                level: "error",
+            },
             properties: {
-                severity: "high",
+                "security-severity": 8,
                 entrypoint: "appshield/kubernetes/KSV017/deny",
                 path: "$container.securityContext.privileged",
             },
@@ -44093,7 +45800,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Set a limit value under 'containers[].resources.limits.memory'.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV018/deny",
                 path: "$container.resources.limits.memory",
             },
@@ -44112,7 +45819,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Set 'containers[].securityContext.runAsUser' to an integer > 10000.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV020/deny",
                 path: "$container.securityContext.runAsUser",
             },
@@ -44131,7 +45838,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Set 'containers[].securityContext.runAsGroup' to an integer > 10000.",
             },
             properties: {
-                severity: "medium",
+                "security-severity": 5,
                 entrypoint: "appshield/kubernetes/KSV021/deny",
                 path: "$container.securityContext.runAsGroup",
             },
@@ -44150,7 +45857,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Do not set 'spec.volumes[*].hostPath'.",
             },
             properties: {
-                severity: "medium",
+                "security-severity": 5,
                 entrypoint: "appshield/kubernetes/KSV023/deny",
                 path: "spec.template.spec.volumes.hostPath",
             },
@@ -44168,8 +45875,11 @@ const DEFAULT_TRIVY_PLUGIN = {
             help: {
                 text: "Do not set spec.containers[*].ports[*].hostPort and spec.initContainers[*].ports[*].hostPort.",
             },
+            defaultConfiguration: {
+                level: "error",
+            },
             properties: {
-                severity: "high",
+                "security-severity": 8,
                 entrypoint: "appshield/kubernetes/KSV024/deny",
                 path: "$container.ports",
             },
@@ -44188,7 +45898,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Do not set spec.securityContext.seLinuxOptions, spec.containers[*].securityContext.seLinuxOptions and spec.initContainers[*].securityContext.seLinuxOptions.",
             },
             properties: {
-                severity: "medium",
+                "security-severity": 5,
                 entrypoint: "appshield/kubernetes/KSV025/deny",
                 path: "$container.securityContext.seLinuxOptions",
             },
@@ -44207,7 +45917,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Do not set spec.containers[*].securityContext.procMount and spec.initContainers[*].securityContext.procMount.",
             },
             properties: {
-                severity: "medium",
+                "security-severity": 5,
                 entrypoint: "appshield/kubernetes/KSV027/deny",
                 path: "$container.securityContext.procMount",
             },
@@ -44226,7 +45936,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Do not Set 'spec.volumes[*]' to any of the disallowed volume types.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV028/deny",
                 path: "spec.template.spec.volumes",
             },
@@ -44245,7 +45955,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "containers[].securityContext.runAsGroup' to a non-zero integer or leave undefined.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV029/deny",
                 path: "$container.securityContext.runAsGroup",
             },
@@ -44264,7 +45974,7 @@ const DEFAULT_TRIVY_PLUGIN = {
                 text: "Set 'spec.securityContext.seccompProfile.type', 'spec.containers[*].securityContext.seccompProfile' and 'spec.initContainers[*].securityContext.seccompProfile' to 'RuntimeDefault' or undefined.",
             },
             properties: {
-                severity: "low",
+                "security-severity": 2,
                 entrypoint: "appshield/kubernetes/KSV030/deny",
                 path: "$container.securityContext.seccompProfile.type",
             },
@@ -44273,7 +45983,231 @@ const DEFAULT_TRIVY_PLUGIN = {
 };
 const OPEN_POLICY_AGENT_RULES = DEFAULT_TRIVY_PLUGIN.rules;
 
+;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/references/utils/kustomizeRefs.js
+
+
+
+
+
+
+
+/**
+ * Creates kustomization refs between a kustomization and its resources
+ */
+function linkParentKustomization(filePath, kustomization, resources, refNode) {
+    let result = [];
+    getResourcesForPath(filePath, resources).forEach((r) => {
+        // since the target is a file there is no target refNode
+        linkResources(kustomization, r, refNode);
+        result.push(r);
+    });
+    return result;
+}
+/**
+ * Checks if the specified resource is a kustomization resource
+ */
+function isKustomizationResource(r) {
+    return (r &&
+        r.kind === KUSTOMIZATION_KIND &&
+        (!r.apiVersion || r.apiVersion.startsWith(KUSTOMIZATION_API_GROUP)));
+}
+/**
+ * Checks if the specified resource is a kustomization patch
+ */
+function isKustomizationPatch(r) {
+    return r && r.name.startsWith("Patch: ");
+}
+function isKustomizationFilePath(filePath) {
+    const name = path.basename(filePath).toLowerCase();
+    return name.endsWith(".yaml") && name.indexOf("kustomization") !== -1;
+}
+/**
+ * Checks if the specified fileEntry is a kustomization file
+ */
+function isKustomizationFile(filePath, resources) {
+    if (filePath && isKustomizationFilePath(filePath)) {
+        const r = getResourcesForPath(filePath, resources);
+        return r.length === 1 && isKustomizationResource(r[0]);
+    }
+    return false;
+}
+/**
+ * Processes a resource ref in a kustomization and creates corresponding resourcerefs
+ */
+function processKustomizationResourceRef(kustomization, refNode, resources, files) {
+    let resourcePath = path.join(path.parse(kustomization.filePath).dir, refNode.nodeValue());
+    if (files.has(resourcePath)) {
+        let children = findChildren(files, resourcePath);
+        if (children.length > 0) {
+            children
+                .filter((childFileEntry) => isKustomizationFile(childFileEntry, resources))
+                .forEach((childFileEntry) => {
+                linkParentKustomization(childFileEntry, kustomization, resources, refNode);
+            });
+        }
+        else {
+            // resource is file -> check for contained resources
+            let result = linkParentKustomization(resourcePath, kustomization, resources, refNode);
+            // no resources found in file? - create a fileref instead
+            if (result.length === 0) {
+                createKustomizationFileRef(kustomization, refNode, resourcePath, files);
+            }
+        }
+    }
+    else {
+        // resource is file or folder ref
+        createKustomizationFileRef(kustomization, refNode, resourcePath, files);
+    }
+}
+/**
+ * Extract patches at the specified nodePath and create resource or file refs
+ */
+function extractPatches(kustomization, files, resources, patchPath, parser) {
+    let strategicMergePatches = getScalarNodes(kustomization, patchPath, parser);
+    strategicMergePatches
+        .filter((refNode) => refNode.node.type === "PLAIN")
+        .forEach((refNode) => {
+        let targetPath = path.join(path.parse(kustomization.filePath).dir, refNode.nodeValue());
+        if (files.has(targetPath)) {
+            let linkedResources = linkParentKustomization(targetPath, kustomization, resources, refNode);
+            if (linkedResources.length > 0) {
+                linkedResources.forEach((resource) => {
+                    if (!resource.name.startsWith("Patch:")) {
+                        resource.name = `Patch: ${resource.name}`;
+                    }
+                });
+            }
+            else {
+                createKustomizationFileRef(kustomization, refNode, targetPath, files);
+            }
+        }
+        else {
+            // this will create an unsatisfied file ref
+            createKustomizationFileRef(kustomization, refNode, targetPath, files);
+        }
+    });
+}
+// as specified by https://github.com/hashicorp/go-getter#url-format
+function isExternalResourceRef(refNode) {
+    const externalPrefixes = ["http://", "https://", "github.com/", "gitlab.com/",
+        "bitbucket.org/", "git::", "hg::", "s3::", "gcs::", "file:"];
+    let value = refNode.nodeValue().toLowerCase();
+    return externalPrefixes.findIndex(v => value.startsWith(v)) >= 0;
+}
+/**
+ * Processes all kustomizations in resourceMap and establishes corresponding resourcerefs
+ */
+function processKustomizations(resources, files, parser) {
+    resources
+        .filter((r) => isKustomizationResource(r))
+        .filter((k) => k.content.resources ||
+        k.content.bases ||
+        k.content.patchesStrategicMerge ||
+        k.content.patchesJson6902)
+        .forEach((kustomization) => {
+        let resourceNodes = getScalarNodes(kustomization, "resources", parser);
+        if (kustomization.content.bases) {
+            resourceNodes = resourceNodes.concat(getScalarNodes(kustomization, "bases", parser));
+        }
+        resourceNodes
+            .filter((refNode) => !isExternalResourceRef(refNode))
+            .forEach((refNode) => {
+            processKustomizationResourceRef(kustomization, refNode, resources, files);
+        });
+        if (kustomization.content.patchesStrategicMerge) {
+            extractPatches(kustomization, files, resources, "patchesStrategicMerge", parser);
+        }
+        if (kustomization.content.patchesJson6902) {
+            extractPatches(kustomization, files, resources, "patchesJson6902:path", parser);
+        }
+    });
+}
+/**
+ * Gets all resources directly linked to by a kustomization, including transient resources
+ */
+function getKustomizationRefs(resources, kustomizationId, selectParent = false) {
+    let linkedResourceIds = [];
+    const kustomization = findResourceById(kustomizationId, resources);
+    if (kustomization && kustomization.refs) {
+        kustomization.refs
+            .filter((r) => r.type === ResourceRefType.Outgoing ||
+            (selectParent && r.type === ResourceRefType.Incoming))
+            .forEach((r) => {
+            if (r.target?.type === "resource" && r.target.resourceId) {
+                const target = findResourceById(r.target.resourceId, resources);
+                if (target) {
+                    linkedResourceIds.push(r.target.resourceId);
+                    if (isKustomizationResource(target) &&
+                        r.type === ResourceRefType.Outgoing) {
+                        linkedResourceIds = linkedResourceIds.concat(getKustomizationRefs(resources, r.target.resourceId));
+                    }
+                }
+            }
+        });
+    }
+    return linkedResourceIds;
+}
+/**
+ * Adds a file ref to the specified file to the specified resource
+ */
+function createKustomizationFileRef(resource, refNode, filePath, files) {
+    const isFile = files.has(filePath);
+    const isFolder = !isFile && isFolderPath(filePath, files);
+    const refType = isFile || isFolder ? ResourceRefType.Outgoing : ResourceRefType.Unsatisfied;
+    resource.refs = resource.refs || [];
+    const refName = (refNode ? refNode.nodeValue() : filePath) || "<missing>";
+    const ref = {
+        type: refType,
+        name: refName,
+        position: refNode.getNodePosition(),
+        target: {
+            type: "file",
+            filePath: isFolder
+                ? `${filePath + path.sep}kustomization.yaml`
+                : filePath,
+        },
+    };
+    resource.refs.push(ref);
+}
+function parseNodePath(nodePath) {
+    return nodePath.split(":");
+}
+function getScalarNodes(resource, nodePath, parser) {
+    let parents = [parser.parse(resource).parsedDoc];
+    const names = parseNodePath(nodePath);
+    for (let ix = 0; ix < names.length; ix += 1) {
+        let nextParents = [];
+        const name = names[ix];
+        parents.forEach((parent) => {
+            const child = parent.get(name, true);
+            if (child) {
+                if (isSeq(child)) {
+                    nextParents = nextParents.concat(child.items);
+                }
+                else {
+                    nextParents.push(child);
+                }
+            }
+        });
+        if (nextParents.length === 0) {
+            return [];
+        }
+        parents = nextParents;
+    }
+    let results = [];
+    parents.forEach((parent) => {
+        if (isSeq(parent)) {
+            results = results.concat(parent.items.map((node) => new NodeWrapper(node, parser.getLineCounter(resource))));
+        }
+        else if (isScalar(parent)) {
+            results.push(new NodeWrapper(parent, parser.getLineCounter(resource)));
+        }
+    });
+    return results;
+}
+
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/open-policy-agent/validator.js
+
 
 
 
@@ -44295,18 +46229,27 @@ const CONTROLLER_KINDS = [
     "ReplicaSet",
     "ReplicationController",
 ];
-class OpenPolicyAgentValidator extends AbstractValidator {
+class validator_OpenPolicyAgentValidator extends AbstractPlugin {
     resourceParser;
     wasmLoader;
     static toolName = "open-policy-agent";
     _settings;
     validator;
     constructor(resourceParser, wasmLoader) {
-        super(OpenPolicyAgentValidator.toolName, OPEN_POLICY_AGENT_RULES);
+        super({
+            id: "KSV",
+            name: "open-policy-agent",
+            displayName: "Open Policy Agent",
+            description: "Open Policy Agent Policy-based control. Flexible, fine-grained control for administrators across the stack.",
+            icon: "open-policy-agent",
+            learnMoreUrl: "https://github.com/open-policy-agent/opa",
+        }, OPEN_POLICY_AGENT_RULES);
         this.resourceParser = resourceParser;
         this.wasmLoader = wasmLoader;
     }
-    async configureValidator(settings = {}) {
+    async configurePlugin(settings = {}) {
+        if (this.validator)
+            return;
         this._settings = validator_Settings.parse(settings["open-policy-agent"] ?? {});
         const wasmSrc = this._settings.wasmSrc;
         const wasm = await this.wasmLoader.load(wasmSrc);
@@ -44336,6 +46279,7 @@ class OpenPolicyAgentValidator extends AbstractValidator {
     validatePolicyRule(resource, rule) {
         const entrypoint = rule.properties?.entrypoint;
         tiny_invariant_cjs(entrypoint, "Validator's rule misconfigured");
+        tiny_invariant_cjs(this.validator, "Validator has not been configured properly");
         const evaluation = this.validator.evaluate(resource.content, entrypoint);
         const violations = evaluation[0]?.result ?? [];
         const errors = violations
@@ -44449,7 +46393,7 @@ class OpenPolicyAgentValidator extends AbstractValidator {
     }
 }
 function isManagedByKustomize(resource) {
-    if (resource.kind === "Kustomization") {
+    if (isKustomizationResource(resource)) {
         return true;
     }
     if (resource.name.startsWith("Patch: ")) {
@@ -44459,12 +46403,12 @@ function isManagedByKustomize(resource) {
 }
 
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/common/types.js
-var ResourceRefType;
+var types_ResourceRefType;
 (function (ResourceRefType) {
     ResourceRefType["Incoming"] = "incoming";
     ResourceRefType["Outgoing"] = "outgoing";
     ResourceRefType["Unsatisfied"] = "unsatisfied-outgoing";
-})(ResourceRefType || (ResourceRefType = {}));
+})(types_ResourceRefType || (types_ResourceRefType = {}));
 
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/resource-links/rules.js
 const RESOURCE_LINK_RULES = [
@@ -44481,6 +46425,22 @@ const RESOURCE_LINK_RULES = [
             text: "Check whether the referenced resource is missing or has a typo. The reference are often to labels or a names which depends on the property.",
         },
     },
+    {
+        id: "LNK002",
+        name: "no-missing-optional-links",
+        shortDescription: {
+            text: "Disallow missing optional links.",
+        },
+        fullDescription: {
+            text: "The resource has an optional reference and it cannot be found. This could cause problems during deployments.",
+        },
+        help: {
+            text: "Check whether the referenced resource is missing or has a typo. The reference are often to labels or a names which depends on the property.",
+        },
+        defaultConfiguration: {
+            enabled: false
+        }
+    },
 ];
 
 ;// CONCATENATED MODULE: ./node_modules/@monokle/validation/lib/validators/resource-links/validator.js
@@ -44494,10 +46454,16 @@ const RESOURCE_LINK_RULES = [
  *
  * @prerequisite you MUST run `processRefs` before calling the validator.
  */
-class ResourceLinksValidator extends AbstractValidator {
-    static toolName = "resource-links";
+class validator_ResourceLinksValidator extends AbstractPlugin {
     constructor() {
-        super(ResourceLinksValidator.toolName, RESOURCE_LINK_RULES);
+        super({
+            id: "LNK",
+            name: "resource-links",
+            displayName: "Resource Links",
+            description: "Validates that links to other resources are valid.",
+            icon: "resource-links",
+            learnMoreUrl: "https://kubeshop.github.io/monokle/resource-validation/"
+        }, RESOURCE_LINK_RULES);
     }
     merge(_previous, current) {
         // Disable incremental validation for now,
@@ -44514,28 +46480,46 @@ class ResourceLinksValidator extends AbstractValidator {
     }
     async validateResource(resource) {
         const refs = resource.refs ?? [];
-        const unsatisfiedRefs = refs.filter(isUnsatisfied);
+        const unsatisfiedRefs = refs.filter(ref => ref.type === types_ResourceRefType.Unsatisfied);
         const results = unsatisfiedRefs
             .map((ref) => this.adaptToValidationResult(resource, ref))
             .filter(isDefined);
         return results;
     }
     adaptToValidationResult(resource, ref) {
-        const region = ref.position?.endColumn && ref.position.endLine
+        const pos = ref.position;
+        const region = pos?.endColumn && pos.endLine
             ? {
-                startLine: ref.position.line,
-                startColumn: ref.position.column,
-                endLine: ref.position.endLine,
-                endColumn: ref.position.endColumn,
+                startLine: pos.line,
+                startColumn: pos.column,
+                endLine: pos.endLine,
+                endColumn: pos.endColumn
             }
-            : undefined;
+            : pos
+                ? {
+                    startLine: pos.line,
+                    startColumn: pos.column,
+                    endLine: pos.line,
+                    endColumn: pos.column + pos.length
+                }
+                : undefined;
         const locations = createLocations(resource, region);
-        return this.createValidationResult("LNK001", {
-            message: {
-                text: "Unsatisfied resource link.",
-            },
-            locations,
-        });
+        if (ref.target?.type === "resource" && ref.target?.isOptional) {
+            return this.isRuleEnabled("LNK002") ? this.createValidationResult("LNK002", {
+                message: {
+                    text: "Unsatisfied optional resource link."
+                },
+                locations
+            }) : undefined;
+        }
+        else {
+            return this.isRuleEnabled("LNK001") ? this.createValidationResult("LNK001", {
+                message: {
+                    text: "Unsatisfied resource link."
+                },
+                locations
+            }) : undefined;
+        }
     }
 }
 const isUnsatisfied = (r) => {
@@ -44856,11 +46840,17 @@ const YAML_RULES = [
 
 
 
-class YamlValidator extends AbstractValidator {
+class validator_YamlValidator extends AbstractPlugin {
     resourceParser;
-    static toolName = "yaml-syntax";
     constructor(resourceParser) {
-        super(YamlValidator.toolName, YAML_RULES);
+        super({
+            id: "YML",
+            name: "yaml-syntax",
+            icon: "yaml-syntax",
+            displayName: "YAML Syntax",
+            description: "Validates that your manifests have correct YAML syntax.",
+            learnMoreUrl: "https://kubeshop.github.io/monokle/resource-validation/",
+        }, YAML_RULES);
         this.resourceParser = resourceParser;
     }
     async doValidate(resources, incremental) {
@@ -44890,12 +46880,12 @@ class YamlValidator extends AbstractValidator {
         const region = this.resourceParser.parseErrorRegion(resource, err.pos);
         const locations = createLocations(resource, region);
         const ruleId = YAML_RULE_MAP[err.code];
-        return this.createValidationResult(ruleId, {
+        return this.isRuleEnabled(ruleId) ? this.createValidationResult(ruleId, {
             message: {
                 text: err.message,
             },
             locations,
-        });
+        }) : undefined;
     }
 }
 
@@ -44912,22 +46902,22 @@ class YamlValidator extends AbstractValidator {
 
 
 
-function createMonokleValidator(loader, defaultConfig) {
-    return new MonokleValidator(loader, defaultConfig);
+
+
+
+
+
+
+function createMonokleValidator(loader, fallback) {
+    return new MonokleValidator(loader, fallback);
 }
-function createDefaultMonokleValidator(parser = new ResourceParser(), schemaLoader = new SchemaLoader()) {
-    return new MonokleValidator(createDefaultPluginLoader(parser, schemaLoader), {
-        plugins: {
-            "open-policy-agent": true,
-            "resource-links": true,
-            "yaml-syntax": true,
-            labels: true,
-            "kubernetes-schema": true,
-        },
-    });
-}
-function createDefaultPluginLoader(parser = new ResourceParser(), schemaLoader = new SchemaLoader()) {
-    return async (pluginName) => {
+/**
+ * Creates a Monokle validator that can dynamically fetch custom plugins.
+ *
+ * @remark NodeJs does not yet support ESM HTTP URLs. Instead use `createExtensibleNodeMonokleValidator`.
+ */
+function createExtensibleMonokleValidator(parser = new ResourceParser(), schemaLoader = new SchemaLoader()) {
+    return new MonokleValidator(async (pluginName) => {
         switch (pluginName) {
             case "open-policy-agent":
                 const wasmLoader = new RemoteWasmLoader();
@@ -44937,67 +46927,156 @@ function createDefaultPluginLoader(parser = new ResourceParser(), schemaLoader =
             case "yaml-syntax":
                 return new YamlValidator(parser);
             case "labels":
-                return new LabelsValidator(parser);
+                const labelPlugin = await __nccwpck_require__.e(/* import() */ 273).then(__nccwpck_require__.bind(__nccwpck_require__, 5273));
+                return new SimpleCustomValidator(labelPlugin.default, parser);
             case "kubernetes-schema":
                 return new KubernetesSchemaValidator(parser, schemaLoader);
+            case DEV_MODE_TOKEN:
+                return new DevCustomValidator(parser);
             default:
-                throw new Error("validator_not_found");
+                try {
+                    const url = `https://plugins.monokle.com/validation/${pluginName}/latest.js`;
+                    const customPlugin = await __nccwpck_require__(5109)(url);
+                    return new SimpleCustomValidator(customPlugin.default, parser);
+                }
+                catch (err) {
+                    throw new Error(err instanceof Error
+                        ? `plugin_not_found: ${err.message}`
+                        : `plugin_not_found: ${String(err)}`);
+                }
+        }
+    });
+}
+function createDefaultMonokleValidator(parser = new resourceParser_ResourceParser(), schemaLoader = new schemaLoader_SchemaLoader()) {
+    return new MonokleValidator(createDefaultPluginLoader(parser, schemaLoader));
+}
+function createDefaultPluginLoader(parser = new resourceParser_ResourceParser(), schemaLoader = new schemaLoader_SchemaLoader()) {
+    return async (pluginName) => {
+        switch (pluginName) {
+            case "open-policy-agent":
+                const wasmLoader = new RemoteWasmLoader_RemoteWasmLoader();
+                return new validator_OpenPolicyAgentValidator(parser, wasmLoader);
+            case "resource-links":
+                return new validator_ResourceLinksValidator();
+            case "yaml-syntax":
+                return new validator_YamlValidator(parser);
+            case "labels":
+                const labelPlugin = await __nccwpck_require__.e(/* import() */ 273).then(__nccwpck_require__.bind(__nccwpck_require__, 5273));
+                return new simpleValidator_SimpleCustomValidator(labelPlugin.default, parser);
+            case "kubernetes-schema":
+                return new validator_KubernetesSchemaValidator(parser, schemaLoader);
+            default:
+                throw new Error("plugin_not_found");
         }
     };
 }
+/**
+ * The plugins that will be loaded by default.
+ */
+const DEFAULT_PLUGIN_MAP = {
+    "open-policy-agent": true,
+    "resource-links": true,
+    "yaml-syntax": true,
+    "kubernetes-schema": true,
+};
 class MonokleValidator {
+    /**
+     * The user configuration of this validator.
+     */
     #config;
+    /**
+     * The fallback configuration of this validator.
+     *
+     * This is here for sane defaults, but the moment you
+     * set configuration it's not taken into consideration
+     * to make it easier to reason about what you get.
+     */
+    #fallback;
     #abortController = new AbortController();
     #loading;
     #loader;
     #previousPluginsInit;
-    #validators = [];
-    constructor(loader, defaultConfig = {}) {
+    #plugins = [];
+    #failedPlugins = [];
+    #customSchemas = new Set();
+    constructor(loader, fallback = DEFAULT_PLUGIN_MAP) {
         this.#loader = loader;
-        this.#config = {
-            default: defaultConfig,
-            merged: defaultConfig,
-        };
+        this.#fallback = { plugins: fallback };
+        this.#config = this.#fallback;
     }
     get config() {
-        return this.#config;
+        return this.#config ?? this.#fallback;
     }
+    get metadata() {
+        const entries = this.#plugins.map((p) => [p.metadata.name, p.metadata]);
+        return Object.fromEntries(entries);
+    }
+    get rules() {
+        const entries = this.#plugins.map((p) => [p.metadata.name, p.rules]);
+        return Object.fromEntries(entries);
+    }
+    /**
+     * Whether the rule exists in some plugin.
+     *
+     * @params - Either the rule identifier or display name.
+     * @example "KSV013" or "open-policy-agent/no-latest-image"
+     */
+    hasRule(rule) {
+        return this.#plugins.some((p) => p.hasRule(rule));
+    }
+    /**
+     * Whether the rule is enabled in some plugin.
+     *
+     * @params rule - Either the rule identifier or display name.
+     * @example "KSV013" or "open-policy-agent/no-latest-image"
+     */
     isRuleEnabled(rule) {
-        return Boolean(this.#config.merged.rules?.[rule]);
+        return this.#plugins.some((p) => p.isRuleEnabled(rule));
     }
-    isPluginEnabled(name) {
-        return Boolean(this.#config.merged.plugins?.[name]);
+    /**
+     * Whether the plugin is loaded.
+     *
+     * @params name - The plugin name.
+     * @example "open-policy-agent"
+     */
+    isPluginLoaded(name) {
+        return this.#plugins.some((p) => p.metadata.name === name);
     }
-    configureFile(config) {
-        this.#config.file = config;
-        this.#config.merged = this.mergeConfiguration();
-        this.cancelLoad("configuration-file-updated");
+    /**
+     * The plugins that are loaded in this validator.
+     */
+    getPlugins() {
+        return this.#plugins;
     }
-    configureArgs(config) {
-        this.#config.args = config;
-        this.#config.merged = this.mergeConfiguration();
-        this.cancelLoad("args-updated");
+    /**
+     * The plugins that failed to load in this validator.
+     */
+    getFailedPlugins() {
+        return this.#failedPlugins;
     }
-    mergeConfiguration() {
-        return merge(this.#config.default, this.#config.file, this.#config.args);
-    }
-    get tools() {
-        return this.#validators;
+    /**
+     * The plugin with the given name.
+     *
+     * @params name - The plugin name
+     */
+    getPlugin(name) {
+        return this.#plugins.find((p) => p.metadata.name === name);
     }
     /**
      * Eagerly load and configure the validation plugins.
      *
-     * @param config
+     * @param config - the new configuration of the validator.
      */
-    async preload(config = {}) {
-        if (config.file === undefined || typeof config.file === "object") {
-            this.configureFile(config.file);
-        }
-        if (config.args === undefined || typeof config.args === "object") {
-            this.configureArgs(config.args);
-        }
+    async preload(config) {
+        this.#config = config;
         return this.load();
     }
+    /**
+     * Load the plugin and prepare it.
+     * Afterwards plugin and rule metadata are available.
+     *
+     * @see config.plugins
+     */
     load() {
         this.#abortController.abort();
         this.#abortController = new AbortController();
@@ -45009,61 +47088,88 @@ class MonokleValidator {
         this.#loading = undefined;
     }
     async doLoad(signal) {
-        const config = this.#config.merged;
+        const config = this.config;
         const previousPlugins = this.#previousPluginsInit;
+        this.#failedPlugins = [];
         if (!isEqual(config.plugins, previousPlugins)) {
-            // Ensure all validators are loaded
-            const plugins = config.plugins ?? {};
-            for (const [name, value] of Object.entries(plugins)) {
-                if (!value)
-                    continue;
-                const hasValidator = this.#validators.find((v) => v.name === name);
-                if (hasValidator)
-                    continue;
-                const validator = await this.#loader(name);
-                if (signal.aborted)
-                    return;
-                this.#validators.push(validator);
-            }
-            // Toggle validators
-            for (const validator of this.#validators) {
-                const value = plugins[validator.name];
-                validator.enabled = Boolean(value);
-            }
-            this.#previousPluginsInit = plugins;
-        }
-        // Configure validators
-        for (const validator of this.#validators) {
-            await validator.configure({
-                rules: config.rules,
-                settings: config.settings,
-            });
+            // All validators found in configuration are loaded.
+            // That way the plugin and rule metadata becomes available.
+            const pluginsConfig = config.plugins ?? {};
+            const newPluginNames = Object.keys(pluginsConfig ?? {});
+            // Unload stale plugins
+            const previousPluginNames = Object.keys(this.#previousPluginsInit ?? {});
+            const stalePlugins = difference(previousPluginNames, newPluginNames);
+            this.doUnload(stalePlugins);
+            // Load new plugins
+            const missingPlugins = newPluginNames.filter((p) => !this.isPluginLoaded(p));
+            const loading = await Promise.allSettled(missingPlugins.map(async (p) => {
+                try {
+                    const validator = await this.#loader(p);
+                    return validator;
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : "reason unknown";
+                    throw new PluginLoadError(p, msg);
+                }
+            }));
             if (signal.aborted)
                 return;
+            loading.forEach((pluginPromise) => {
+                if (pluginPromise.status === "fulfilled") {
+                    this.#plugins.push(pluginPromise.value);
+                }
+                else {
+                    tiny_invariant_cjs(pluginPromise.reason instanceof PluginLoadError);
+                    this.#failedPlugins.push(pluginPromise.reason.name);
+                    if (config.settings?.["debug"]) {
+                        console.error(`[validator] ${pluginPromise.reason.message}`);
+                    }
+                }
+            });
+            // Toggle validators
+            for (const validator of this.#plugins) {
+                const value = pluginsConfig[validator.metadata.name];
+                validator.enabled = Boolean(value);
+            }
+            this.#previousPluginsInit = clone(pluginsConfig);
+        }
+        // Configure validators
+        await Promise.allSettled(this.#plugins.map((p) => p.configure({
+            rules: config.rules,
+            settings: config.settings,
+        })));
+    }
+    async doUnload(plugins) {
+        for (const pluginName of plugins) {
+            const plugin = this.getPlugin(pluginName);
+            if (!plugin)
+                continue;
+            await plugin.unload();
+            this.#plugins = this.#plugins.filter((p) => p.metadata.name !== pluginName);
         }
     }
     /**
      * Validates the resources.
      */
-    async validate({ resources, incremental, }) {
+    async validate({ resources, incremental, abortSignal: externalAbortSignal, }) {
         if (this.#loading === undefined) {
             this.load();
         }
-        const abortSignal = this.#abortController.signal;
+        const loadAbortSignal = this.#abortController.signal;
         await this.#loading;
-        throwIfAborted(abortSignal);
-        const validators = this.#validators.filter((v) => v.enabled);
+        throwIfAborted(loadAbortSignal, externalAbortSignal);
+        const validators = this.#plugins.filter((v) => v.enabled);
         await nextTick();
-        throwIfAborted(abortSignal);
+        throwIfAborted(loadAbortSignal, externalAbortSignal);
+        this.preprocessCustomResourceDefinitions(resources);
         const allRuns = await Promise.allSettled(validators.map((v) => v.validate(resources, incremental)));
-        throwIfAborted(abortSignal);
+        throwIfAborted(loadAbortSignal, externalAbortSignal);
         const runs = allRuns
             .map((run) => (run.status === "fulfilled" ? run.value : undefined))
             .filter(isDefined);
-        if (this.#config.merged.settings?.debug && allRuns.length !== runs.length) {
+        if (this.config.settings?.debug && allRuns.length !== runs.length) {
             const failedRuns = allRuns.filter((r) => r.status === "rejected");
-            // eslint-disable-next-line no-console
-            console.warn("skipped failed validators", failedRuns);
+            this.debug("skipped failed validators", failedRuns);
         }
         return {
             $schema: "https://json.schemastore.org/sarif-2.1.0.json",
@@ -45071,16 +47177,90 @@ class MonokleValidator {
             runs,
         };
     }
+    preprocessCustomResourceDefinitions(resources) {
+        const crds = resources.filter((r) => r.kind === "CustomResourceDefinition");
+        for (const crd of crds) {
+            const spec = crd.content.spec;
+            const kind = spec?.names?.kind;
+            const apiVersion = findDefaultVersion(crd.content);
+            if (!apiVersion) {
+                continue;
+            }
+            const schema = extractSchema(crd.content, apiVersion);
+            if (!schema) {
+                continue;
+            }
+            this.registerCustomSchema({ kind, apiVersion, schema });
+        }
+    }
+    async registerCustomSchema(schema) {
+        if (!this.isPluginLoaded("kubernetes-schema")) {
+            this.debug("Cannot register custom schema.", {
+                reason: "Kubernetes Schema plugin must be loaded.",
+            });
+            return;
+        }
+        const key = `${schema.apiVersion}-${schema.kind}`;
+        if (this.#customSchemas.has(key)) {
+            this.debug("Cannot register custom schema.", {
+                reason: "The schema is already registered.",
+            });
+            return;
+        }
+        // Let's put K8s schema first as it first adds the schema to the shared SchemaLoader.
+        const kubernetesSchemaPlugin = this.getPlugin("kubernetes-schema");
+        const otherPlugins = this.getPlugins().filter((p) => p.metadata.name !== "kubernetes-schema");
+        for (const plugin of [kubernetesSchemaPlugin, ...otherPlugins]) {
+            await plugin?.registerCustomSchema(schema);
+        }
+        this.#customSchemas.add(key);
+    }
+    async unregisterCustomSchema(schema) {
+        if (!this.isPluginLoaded("kubernetes-schema")) {
+            this.debug("Cannot unregister custom schema.", {
+                reason: "Kubernetes Schema plugin must be loaded.",
+            });
+            return;
+        }
+        const key = `${schema.apiVersion}-${schema.kind}`;
+        if (this.#customSchemas.has(key)) {
+            this.debug("Cannot register custom schema.", {
+                reason: "The schema is not registered.",
+            });
+            return;
+        }
+        // Let's put K8s schema first as it first removes the schema from the shared SchemaLoader.
+        const kubernetesSchemaPlugin = this.getPlugin("kubernetes-schema");
+        const otherPlugins = this.getPlugins().filter((p) => p.metadata.name !== "kubernetes-schema");
+        for (const plugin of [kubernetesSchemaPlugin, ...otherPlugins]) {
+            await plugin?.unregisterCustomSchema(schema);
+        }
+        this.#customSchemas.delete(key);
+    }
     /**
      * Clear the incremental caches.
      */
     async clear() {
-        await Promise.all(this.#validators.map((v) => v.clear()));
+        await Promise.all(this.#plugins.map((v) => v.clear()));
     }
+    /**
+     * Unloads the Monokle Validator so it can be used as new.
+     */
     async unload() {
         this.cancelLoad("unload");
-        this.configureFile(undefined);
-        this.configureArgs(undefined);
+        for (const schema of this.#customSchemas) {
+            const [apiVersion, kind] = schema.split("-");
+            await this.unregisterCustomSchema({ apiVersion, kind });
+        }
+        const pluginNames = this.getPlugins().map((p) => p.metadata.name);
+        await this.doUnload(pluginNames);
+        this.#config = undefined;
+        this.#failedPlugins = [];
+    }
+    debug(msg, details) {
+        if (!this.config.settings?.debug)
+            return;
+        console.debug("[validation]", msg, details);
     }
 }
 
@@ -45386,7 +47566,7 @@ function printResponse(response) {
             const location = getFileLocation(result);
             const L1 = `[${result.ruleId}] ${result.message.text}`;
             const L2 = `\n  found at ${location.physicalLocation?.artifactLocation.uri}:${location.physicalLocation?.region?.startColumn}`;
-            const L3 = `\n    ${rule.fullDescription.text}`;
+            const L3 = `\n    ${rule.fullDescription?.text ?? rule.shortDescription.text}`;
             const L4 = `\n      ${rule.help.text}`;
             if (result.level === "error") {
                 core.error(`${L1}${L2}${L3}${L4}`);
@@ -45512,7 +47692,7 @@ function createResourceName(filePath, content, kind) {
         return parsedPath.name;
     }
 }
-function getResourcesForPath(filePath, resourceMap) {
+function parse_getResourcesForPath(filePath, resourceMap) {
     return Object.values(resourceMap).filter((resource) => resource?.filePath === filePath);
 }
 
@@ -45578,7 +47758,7 @@ async function run() {
         const validator = createDefaultMonokleValidator();
         const configPath = core.getInput("config") ?? "monokle.validation.yaml";
         const config = await readConfig(configPath);
-        await validator.preload({ file: config });
+        await validator.preload(config);
         const inputPath = core.getInput("path");
         const files = await readFiles(inputPath);
         const resources = extractK8sResources(files);

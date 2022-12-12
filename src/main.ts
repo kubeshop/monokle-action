@@ -17,7 +17,7 @@ async function run(): Promise<void> {
     const validator = createDefaultMonokleValidator();
     const configPath = core.getInput("config") ?? "monokle.validation.yaml";
     const config = await readConfig(configPath);
-    await validator.preload({ file: config });
+    await validator.preload(config);
 
     const inputPath = core.getInput("path");
     const files = await readFiles(inputPath);

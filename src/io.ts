@@ -27,7 +27,7 @@ export function printResponse(response: ValidationResponse) {
 
       const L1 = `[${result.ruleId}] ${result.message.text}`;
       const L2 = `\n  found at ${location.physicalLocation?.artifactLocation.uri}:${location.physicalLocation?.region?.startColumn}`;
-      const L3 = `\n    ${rule.fullDescription.text}`;
+      const L3 = `\n    ${rule.fullDescription?.text ?? rule.shortDescription.text}`;
       const L4 = `\n      ${rule.help.text}`;
 
       if (result.level === "error") {
