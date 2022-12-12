@@ -3,11 +3,6 @@
 </p>
 
 <p align="center">
-<a href="https://github.com/features/actions">Monokle Action</a>
-for <a href="">static Kubernetes analysis</a>.
-</p>
-
-<p align="center">
   <a href="https://github.com/kubeshop/monokle-action/releases">
     <img title="Release" src="https://img.shields.io/github/v/release/kubeshop/monokle-action"/>
   </a>
@@ -17,7 +12,7 @@ for <a href="">static Kubernetes analysis</a>.
   </a>
 </p>
 
-## Welcome to Monokle Action
+# Welcome to Monokle Action
 
 Monokle Action is a GitHub Action for static analysis of Kubernetes resources.
 
@@ -29,8 +24,6 @@ Under the hood it uses [@monokle/validation][monokle-validation] which allows yo
 
 ## Table of content
 
-- [Welcome to Monokle Action](#welcome-to-monokle-action)
-- [Table of content](#table-of-content)
 - [Usage](#usage)
   - [Understanding the Action's result](#understanding-the-actions-result)
   - [Validate the output of Kustomize](#validate-the-output-of-kustomize)
