@@ -6,8 +6,8 @@ import {
   readConfig,
   ValidationResponse,
 } from "@monokle/validation";
+import { extractK8sResources } from "@monokle/parser";
 import { printResponse } from "./io.js";
-import { extractK8sResources } from "./parse.js";
 
 import "isomorphic-fetch";
 import { readFiles } from "./readFiles.js";
