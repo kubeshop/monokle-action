@@ -67719,7 +67719,7 @@ let fsEvents;
 let fsEventsImportError;
 async function loadFsEvents() {
     try {
-        ({ default: fsEvents } = await __nccwpck_require__.e(/* import() */ 149).then(__nccwpck_require__.t.bind(__nccwpck_require__, 9149, 19)));
+        ({ default: fsEvents } = await __nccwpck_require__.e(/* import() */ 289).then(__nccwpck_require__.t.bind(__nccwpck_require__, 6289, 19)));
     }
     catch (error) {
         fsEventsImportError = error;
